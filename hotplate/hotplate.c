@@ -131,20 +131,21 @@ void imagify(double* new)
 	}
 }
 
-// TODO
-void run_calculations(double* old, double* new, int* fixed)
-{
-	for (int row = 0; row < PLATESIZE; row++)
-	{
-		for (int col = 0; col < PLATESIZE; col++)
-		{
-			if (!FIXED(col, row))
-			{
-				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
-			}
-		}
-	}
-}
+// SERIAL METHOD TO CALCULATE
+// void run_calculations(double* old, double* new, int* fixed)
+// {
+	// #pragma omp parallel shared(old, new, fixed)
+	// for (int row = 0; row < PLATESIZE; row++)
+	// {
+	// 	for (int col = 0; col < PLATESIZE; col++)
+	// 	{
+	// 		if (!FIXED(col, row))
+	// 		{
+	// 			NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
+	// 		}
+	// 	}
+	// }
+// }
 
 // TODO
 bool check_for_steady(double* new, int* fixed)
@@ -174,8 +175,33 @@ int distribute_temperature(double* old, double* new, int* fixed)
 
 	while (!done)
 	{
-		run_calculations(old, new, fixed);
-		run_calculations(new, old, fixed);
+		// run_calculations(old, new, fixed);
+		// run_calculations(new, old, fixed);
+
+		#pragma omp parallel for shared(old, new, fixed)
+		for (int row = 0; row < PLATESIZE; row++)
+		{
+			for (int col = 0; col < PLATESIZE; col++)
+			{
+				if (!FIXED(col, row))
+				{
+					NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
+				}
+			}
+		}
+
+		#pragma omp parallel for shared(old, new, fixed)
+		for (int row = 0; row < PLATESIZE; row++)
+		{
+			for (int col = 0; col < PLATESIZE; col++)
+			{
+				if (!FIXED(col, row))
+				{
+					OLD(col, row) = (NEW(col+1, row) + NEW(col-1, row) + NEW(col, row+1) + NEW(col, row-1) + 4 * NEW(col, row))/8;
+				}
+			}
+		}
+
 		iterations += 2;
 		done = check_for_steady(old, fixed);
 	}
