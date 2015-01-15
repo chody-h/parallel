@@ -16,6 +16,8 @@
 #define NEW(c, r)		new[c+PLATESIZE*r]	
 #define FIXED(c, r)		fixed[c+PLATESIZE*r]	
 
+typedef enum { false, true } bool;
+
 
 // Return the current time in seconds, using a double precision number.
 double when()
@@ -91,7 +93,7 @@ void run_calculations(int* old, int* new, int* fixed)
 	{
 		for (int col = 0; col < PLATESIZE; col++)
 		{
-			
+			NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
 		}
 	}
 }
@@ -107,7 +109,7 @@ bool check_for_steady(int* new, int* fixed)
 			{
 				continue;
 			}
-			else if (ABS(NEW(col,row) – (NEW(col+1,row) + NEW(col-1,row) + NEW(col,row+1) + NEW(col,row-1))/4 ) > 0.1)
+			else if (abs(NEW(col,row) - (NEW(col+1,row) + NEW(col-1,row) + NEW(col,row+1) + NEW(col,row-1))/4) > 0.1)
 			{
 				return false;
 			}
@@ -123,11 +125,20 @@ int distribute_temperature(int* old, int* new, int* fixed)
 
 	while (!done)
 	{
+		// to save some swap assignments, I'm just passing the functions the matrices in different orders.
+		// in retrospect I think I'd rename the variables.
 		run_calculations(old, new, fixed);
-		run_calculations(old, new, fixed);
-		done = check_for_steady(old, new, fixed);
+		run_calculations(new, old, fixed);
+		done = check_for_steady(old, fixed);
+		iterations += 2;
+		if (iterations % 26 == 0) 
+		{
+			printf(".");
+			fflush(stdout);
+		}
 	}
 
+	printf("\n");
 	return iterations;
 }
 
@@ -177,6 +188,7 @@ void imagify(int* new)
 // Distributes heat on a hotplate
 int main(void)
 {
+	printf("Initializing...\n");
 	// start timer
 	double start = when();
 
@@ -185,7 +197,9 @@ int main(void)
 	int* fixed = malloc(sizeof(int) * PLATESIZE * PLATESIZE);
 	initialize(old, new, fixed);
 
-	// perform calculations & checks
+	// distribute the heat
+	printf("Calculating");
+	fflush(stdout);
 	int i = distribute_temperature(old, new, fixed);
 
 	// end timer & print to console
