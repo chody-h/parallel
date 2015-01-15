@@ -132,20 +132,19 @@ void imagify(double* new)
 }
 
 // SERIAL METHOD TO CALCULATE
-// void run_calculations(double* old, double* new, int* fixed)
-// {
-	// #pragma omp parallel shared(old, new, fixed)
-	// for (int row = 0; row < PLATESIZE; row++)
-	// {
-	// 	for (int col = 0; col < PLATESIZE; col++)
-	// 	{
-	// 		if (!FIXED(col, row))
-	// 		{
-	// 			NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
-	// 		}
-	// 	}
-	// }
-// }
+void run_calculations(double* old, double* new, int* fixed)
+{
+	for (int row = 0; row < PLATESIZE; row++)
+	{
+		for (int col = 0; col < PLATESIZE; col++)
+		{
+			if (!FIXED(col, row))
+			{
+				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
+			}
+		}
+	}
+}
 
 // Examines the new data to see if any of it needs to be recalculated. If so, it stops immediately.
 bool check_for_steady(double* new, int* fixed)
@@ -175,8 +174,6 @@ int distribute_temperature(double* old, double* new, int* fixed)
 
 	while (!done)
 	{
-		// run_calculations(old, new, fixed);
-		// run_calculations(new, old, fixed);
 		#pragma omp parallel for shared(old, new, fixed)
 		for (int row = 0; row < PLATESIZE; row++)
 		{
@@ -190,11 +187,11 @@ int distribute_temperature(double* old, double* new, int* fixed)
 		}
 
 		iterations += 1;
-
-		done = check_for_steady(new, fixed);
 		double* temp = new;
 		new = old;
 		old = temp;
+
+		done = check_for_steady(old, fixed);
 	}
 
 	return iterations;
@@ -218,7 +215,7 @@ int main(void)
 		initialize(old, new, fixed);
 
 		// distribute the heat
-		printf("Calculating...\n");
+		printf("Calculating with %d threads...\n", threadcount);
 		int i = distribute_temperature(old, new, fixed);
 
 		// end timer & print to console
