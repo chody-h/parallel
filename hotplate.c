@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>			/* fabs */
 #include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -35,12 +36,13 @@ void initialize(double* old, double* new, int* fixed)
 	{
 		for (int col = 0; col < PLATESIZE; col++)
 		{
-			// // performance enhancer - check if it's fixed in one go, then determine which fixed it is
-			// if (   (col == 0 || col + 1 == PLATESIZE || row == 0) 
-			// 	|| (row + 1 == PLATESIZE) 
-			// 	|| (row == 400 && (0 < col && col < 330)) 
-			// 	|| (row == 200 && col == 500))
-			// {
+			// performance enhancer - check if it's fixed in one go
+			// could definitely be optimized a lot more
+			if (   (col == 0 || col + 1 == PLATESIZE || row == 0) 
+				|| (row + 1 == PLATESIZE) 
+				|| (row == 400 && (0 < col && col < 330)) 
+				|| (row == 200 && col == 500))
+			{
 				// sides & top == cold & fixed
 				if (col == 0 || col + 1 == PLATESIZE || row == 0)
 				{
@@ -69,12 +71,12 @@ void initialize(double* old, double* new, int* fixed)
 					NEW(col, row) = HOT;
 					FIXED(col, row) = true;
 				}
-			// 	else
-			// 	{
-			// 		printf("Impossible.");
-			// 		break;
-			// 	}
-			// }
+				else
+				{
+					printf("Impossible.");
+					break;
+				}
+			}
 			// everywhere else = mild & not fixed
 			else
 			{
@@ -139,18 +141,6 @@ void run_calculations(double* old, double* new, int* fixed)
 			if (!FIXED(col, row))
 			{
 				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
-				/* For Debugging */
-				// if (col == 2000 && row + 4 == PLATESIZE) {
-				// printf("\nrow: %d  col: %d\nnew: %3.2f, right: %3.2f  left: %3.2f  below: %3.2f  above: %3.2f  old: %3.2f", 
-				// 	row,
-				// 	col,
-				// 	NEW(col, row), 
-				// 	OLD(col+1, row),
-				// 	OLD(col-1, row),
-				// 	OLD(col, row+1),
-				// 	OLD(col, row-1),
-				// 	OLD(col, row));
-				// getchar();}
 			}
 		}
 	}
@@ -173,16 +163,6 @@ bool check_for_steady(double* new, int* fixed)
 			}
 		}
 	}
-	/* For Debugging */
-	// int col = 2000, row = PLATESIZE - 4;
-	// printf("\nrow: %d  col: %d\nnew: %3.2f, right: %3.2f  left: %3.2f  below: %3.2f  above: %3.2f", 
-	// 	row,
-	// 	col,
-	// 	NEW(col, row), 
-	// 	NEW(col+1, row),
-	// 	NEW(col-1, row),
-	// 	NEW(col, row+1),
-	// 	NEW(col, row-1)     );
 	return true;
 }
 
@@ -194,24 +174,12 @@ int distribute_temperature(double* old, double* new, int* fixed)
 
 	while (!done)
 	{
-		// to save some swap assignments, I'm just passing the functions the matrices in different orders.
-		// in retrospect I think I'd rename the variables.
 		run_calculations(old, new, fixed);
 		run_calculations(new, old, fixed);
-		done = check_for_steady(old, fixed);
 		iterations += 2;
-		/* For Debugging: Set this number equal to where you want to stop */
-		if (iterations % 400 == 0)
-		{
-			done = true;
-		}
-		if (iterations % 50 == 0) 
-		{
-			printf(".");
-		}
+		done = check_for_steady(old, fixed);
 	}
 
-	printf("\n");
 	return iterations;
 }
 
@@ -219,18 +187,17 @@ int distribute_temperature(double* old, double* new, int* fixed)
 int main(void)
 {
 	printf("Initializing...\n");
-	setbuf(stdout, NULL);
+
 	// start timer
 	double start = when();
 
 	double* old = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
 	double* new = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
-	int* fixed = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
+	int*  fixed = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
 	initialize(old, new, fixed);
 
 	// distribute the heat
-	printf("Calculating");
-	// fflush(stdout);
+	printf("Calculating...\n");
 	int i = distribute_temperature(old, new, fixed);
 
 	// end timer & print to console
@@ -238,7 +205,7 @@ int main(void)
 	printf("Performed %3i iterations in %2.2f seconds.\n", i, end-start);
 
 	// print hotplate to .ppm file
-	imagify(new);
+	// imagify(new);
 
 	return 0;
 }
