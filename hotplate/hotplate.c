@@ -147,7 +147,7 @@ void imagify(double* new)
 	// }
 // }
 
-// TODO
+// Examines the new data to see if any of it needs to be recalculated. If so, it stops immediately.
 bool check_for_steady(double* new, int* fixed)
 {
 	for (int row = 0; row < PLATESIZE; row++)
@@ -167,7 +167,7 @@ bool check_for_steady(double* new, int* fixed)
 	return true;
 }
 
-// TODO
+// calculates new temperatures from the old data set in parallel
 int distribute_temperature(double* old, double* new, int* fixed)
 {
 	int iterations = 0;
@@ -177,7 +177,6 @@ int distribute_temperature(double* old, double* new, int* fixed)
 	{
 		// run_calculations(old, new, fixed);
 		// run_calculations(new, old, fixed);
-
 		#pragma omp parallel for shared(old, new, fixed)
 		for (int row = 0; row < PLATESIZE; row++)
 		{
@@ -190,20 +189,12 @@ int distribute_temperature(double* old, double* new, int* fixed)
 			}
 		}
 
-		#pragma omp parallel for shared(old, new, fixed)
-		for (int row = 0; row < PLATESIZE; row++)
-		{
-			for (int col = 0; col < PLATESIZE; col++)
-			{
-				if (!FIXED(col, row))
-				{
-					OLD(col, row) = (NEW(col+1, row) + NEW(col-1, row) + NEW(col, row+1) + NEW(col, row-1) + 4 * NEW(col, row))/8;
-				}
-			}
-		}
+		iterations += 1;
 
-		iterations += 2;
-		done = check_for_steady(old, fixed);
+		done = check_for_steady(new, fixed);
+		double* temp = new;
+		new = old;
+		old = temp;
 	}
 
 	return iterations;
@@ -213,22 +204,31 @@ int distribute_temperature(double* old, double* new, int* fixed)
 int main(void)
 {
 	printf("Initializing...\n");
+	for (int i = 0; i < 6; i++)
+	{
+		int threadcount = 1 << i;
+		omp_set_num_threads(threadcount);
 
-	// start timer
-	double start = when();
+		// start timer
+		double start = when();
 
-	double* old = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
-	double* new = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
-	int*  fixed = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
-	initialize(old, new, fixed);
+		double* old = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
+		double* new = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
+		int*  fixed = malloc(sizeof(int)    * PLATESIZE * PLATESIZE);
+		initialize(old, new, fixed);
 
-	// distribute the heat
-	printf("Calculating...\n");
-	int i = distribute_temperature(old, new, fixed);
+		// distribute the heat
+		printf("Calculating...\n");
+		int i = distribute_temperature(old, new, fixed);
 
-	// end timer & print to console
-	double end = when();
-	printf("Performed %3i iterations in %2.2f seconds.\n", i, end-start);
+		// end timer & print to console
+		double end = when();
+		printf("Performed %3d iterations in %2.2f seconds using %d threads.\n", i, end-start, threadcount);
+
+		free(old);
+		free(new);
+		free(fixed);
+	}
 
 	// print hotplate to .ppm file
 	// imagify(new);
