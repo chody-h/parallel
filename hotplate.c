@@ -85,14 +85,47 @@ void initialize(int* old, int* new, int* fixed)
 }
 
 // TODO
-int distribute_temperature()
+void run_calculations(int* old, int* new, int* fixed)
+{
+	for (int row = 0; row < PLATESIZE; row++)
+	{
+		for (int col = 0; col < PLATESIZE; col++)
+		{
+			
+		}
+	}
+}
+
+// TODO
+bool check_for_steady(int* new, int* fixed)
+{
+	for (int row = 0; row < PLATESIZE; row++)
+	{
+		for (int col = 0; col < PLATESIZE; col++)
+		{
+			if (FIXED(col, row))
+			{
+				continue;
+			}
+			else if (ABS(NEW(col,row) – (NEW(col+1,row) + NEW(col-1,row) + NEW(col,row+1) + NEW(col,row-1))/4 ) > 0.1)
+			{
+				return false;
+			}
+		}
+	}
+}
+
+// TODO
+int distribute_temperature(int* old, int* new, int* fixed)
 {
 	int iterations = 0;
 	bool done = false;
 
 	while (!done)
 	{
-		for (int row = 0; row < )
+		run_calculations(old, new, fixed);
+		run_calculations(old, new, fixed);
+		done = check_for_steady(old, new, fixed);
 	}
 
 	return iterations;
@@ -153,7 +186,7 @@ int main(void)
 	initialize(old, new, fixed);
 
 	// perform calculations & checks
-	int i = distribute_temperature();
+	int i = distribute_temperature(old, new, fixed);
 
 	// end timer & print to console
 	double end = when();
