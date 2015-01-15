@@ -2,6 +2,7 @@
 	Project 1 - Hotplate	*/
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -11,9 +12,9 @@
 #define MILD			50
 #define COLD			0
 
-#define OLD[c, r]		old[c+PLATESIZE*r]	
-#define NEW[c, r]		new[c+PLATESIZE*r]	
-#define FIXED[c, r]		fixed[c+PLATESIZE*r]	
+#define OLD(c, r)		old[c+PLATESIZE*r]	
+#define NEW(c, r)		new[c+PLATESIZE*r]	
+#define FIXED(c, r)		fixed[c+PLATESIZE*r]	
 
 
 // Return the current time in seconds, using a double precision number.
@@ -41,30 +42,30 @@ void initialize(int* old, int* new, int* fixed)
 				// sides & top == cold & fixed
 				if (col == 0 || col + 1 == PLATESIZE || row == 0)
 				{
-					OLD[col, row] = COLD;
-					NEW[col, row] = COLD;
-					FIXED[col, row] = 1;
+					OLD(col, row) = COLD;
+					NEW(col, row) = COLD;
+					FIXED(col, row) = 1;
 				}
 				// bottom == hot & fixed
 				else if (row + 1 == PLATESIZE)
 				{
-					OLD[col, row] = HOT;
-					NEW[col, row] = HOT;
-					FIXED[col, row] = 1;
+					OLD(col, row) = HOT;
+					NEW(col, row) = HOT;
+					FIXED(col, row) = 1;
 				}
 				// line == hot & fixed
 				else if (row == 400 && (0 < col && col < 330))
 				{
-					OLD[col, row] = HOT;
-					NEW[col, row] = HOT;
-					FIXED[col, row] = 1;
+					OLD(col, row) = HOT;
+					NEW(col, row) = HOT;
+					FIXED(col, row) = 1;
 				}
 				// spot = hot & fixed
 				else if (row == 200 && col == 500)
 				{
-					OLD[col, row] = HOT;
-					NEW[col, row] = HOT;
-					FIXED[col, row] = 1;
+					OLD(col, row) = HOT;
+					NEW(col, row) = HOT;
+					FIXED(col, row) = 1;
 				}
 				else
 				{
@@ -75,9 +76,9 @@ void initialize(int* old, int* new, int* fixed)
 			// everywhere else = mild & not fixed
 			else
 			{
-				OLD[col, row] = MILD;
-				NEW[col, row] = MILD;
-				FIXED[col, row] = 0;
+				OLD(col, row) = MILD;
+				NEW(col, row) = MILD;
+				FIXED(col, row) = 0;
 			}
 		}
 	}
@@ -87,8 +88,57 @@ void initialize(int* old, int* new, int* fixed)
 int distribute_temperature()
 {
 	int iterations = 0;
+	bool done = false;
+
+	while (!done)
+	{
+		for (int row = 0; row < )
+	}
 
 	return iterations;
+}
+
+// converts a temperature between 0 and 100 to corresponding rgb values
+void convert_to_rgb(int temp, int* r, int* b)
+{
+	// red  == 255 0 0
+	// blue == 0 0 255
+
+	*r = (int)(2.55 * temp);
+	*b = (int)(255 - (255/100) * temp);
+}
+
+// prints a 2x2 matrix as a blue and red picture. 
+// matrix must contain temperature values between 0 and 100
+void imagify(int* new)
+{
+	printf("Now printing to image file...\n");
+	FILE *f = fopen("plate.ppm", "w");
+	if (f != NULL)
+	{
+		fprintf(f, "P3\n");
+		fprintf(f, "#plate.ppm\n");
+		fprintf(f, "%d %d\n", PLATESIZE, PLATESIZE);
+		fprintf(f, "255\n\n");
+
+		for (int row = 0; row < PLATESIZE; row++)
+		{
+			for (int col = 0; col < PLATESIZE; col++)
+			{
+				int temp = NEW(col, row);
+				int r = 0, b = 0;
+				convert_to_rgb(temp, &r, &b);
+				fprintf(f, "%d %d %d\n", r, 0, b);
+			}
+		}
+		fclose(f);
+
+		printf("Done printing to file.\n");
+	}
+	else
+	{
+		printf("Error opening file.\n");
+	}
 }
 
 // Distributes heat on a hotplate
@@ -110,7 +160,7 @@ int main(void)
 	printf("Performed %3i iterations in %2.2f seconds.\n", i, end-start);
 
 	// print hotplate to .ppm file
-	// TODO imagify();
+	imagify(new);
 
 	return 0;
 }
