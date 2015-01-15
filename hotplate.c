@@ -12,9 +12,9 @@
 #define MILD			50
 #define COLD			0
 
-#define OLD(c, r)		old[c+PLATESIZE*r]	
-#define NEW(c, r)		new[c+PLATESIZE*r]	
-#define FIXED(c, r)		fixed[c+PLATESIZE*r]	
+#define OLD(c, r)		old  [(c) + PLATESIZE*(r)]	
+#define NEW(c, r)		new  [(c) + PLATESIZE*(r)]	
+#define FIXED(c, r)		fixed[(c) + PLATESIZE*(r)]	
 
 typedef enum { false, true } bool;
 
@@ -29,121 +29,65 @@ double when()
 
 // Initializes three PLATESIZE X PLATESIZE arrays
 // the third array exists to tell whether or not the temperature at a spot can change
-void initialize(int* old, int* new, int* fixed)
+void initialize(double* old, double* new, int* fixed)
 {
 	for (int row = 0; row < PLATESIZE; row++)
 	{
 		for (int col = 0; col < PLATESIZE; col++)
 		{
-			// performance enhancer - check if it's fixed first, then determine which fixed it is
-			if (   (col == 0 || col + 1 == PLATESIZE || row == 0) 
-				|| (row + 1 == PLATESIZE) 
-				|| (row == 400 && (0 < col && col < 330)) 
-				|| (row == 200 && col == 500))
-			{
+			// // performance enhancer - check if it's fixed in one go, then determine which fixed it is
+			// if (   (col == 0 || col + 1 == PLATESIZE || row == 0) 
+			// 	|| (row + 1 == PLATESIZE) 
+			// 	|| (row == 400 && (0 < col && col < 330)) 
+			// 	|| (row == 200 && col == 500))
+			// {
 				// sides & top == cold & fixed
 				if (col == 0 || col + 1 == PLATESIZE || row == 0)
 				{
 					OLD(col, row) = COLD;
 					NEW(col, row) = COLD;
-					FIXED(col, row) = 1;
+					FIXED(col, row) = true;
 				}
 				// bottom == hot & fixed
 				else if (row + 1 == PLATESIZE)
 				{
 					OLD(col, row) = HOT;
 					NEW(col, row) = HOT;
-					FIXED(col, row) = 1;
+					FIXED(col, row) = true;
 				}
 				// line == hot & fixed
 				else if (row == 400 && (0 < col && col < 330))
 				{
 					OLD(col, row) = HOT;
 					NEW(col, row) = HOT;
-					FIXED(col, row) = 1;
+					FIXED(col, row) = true;
 				}
 				// spot = hot & fixed
 				else if (row == 200 && col == 500)
 				{
 					OLD(col, row) = HOT;
 					NEW(col, row) = HOT;
-					FIXED(col, row) = 1;
+					FIXED(col, row) = true;
 				}
-				else
-				{
-					printf("Impossible.");
-					break;
-				}
-			}
+			// 	else
+			// 	{
+			// 		printf("Impossible.");
+			// 		break;
+			// 	}
+			// }
 			// everywhere else = mild & not fixed
 			else
 			{
 				OLD(col, row) = MILD;
 				NEW(col, row) = MILD;
-				FIXED(col, row) = 0;
+				FIXED(col, row) = false;
 			}
 		}
 	}
-}
-
-// TODO
-void run_calculations(int* old, int* new, int* fixed)
-{
-	for (int row = 0; row < PLATESIZE; row++)
-	{
-		for (int col = 0; col < PLATESIZE; col++)
-		{
-			NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
-		}
-	}
-}
-
-// TODO
-bool check_for_steady(int* new, int* fixed)
-{
-	for (int row = 0; row < PLATESIZE; row++)
-	{
-		for (int col = 0; col < PLATESIZE; col++)
-		{
-			if (FIXED(col, row))
-			{
-				continue;
-			}
-			else if (abs(NEW(col,row) - (NEW(col+1,row) + NEW(col-1,row) + NEW(col,row+1) + NEW(col,row-1))/4) > 0.1)
-			{
-				return false;
-			}
-		}
-	}
-}
-
-// TODO
-int distribute_temperature(int* old, int* new, int* fixed)
-{
-	int iterations = 0;
-	bool done = false;
-
-	while (!done)
-	{
-		// to save some swap assignments, I'm just passing the functions the matrices in different orders.
-		// in retrospect I think I'd rename the variables.
-		run_calculations(old, new, fixed);
-		run_calculations(new, old, fixed);
-		done = check_for_steady(old, fixed);
-		iterations += 2;
-		if (iterations % 26 == 0) 
-		{
-			printf(".");
-			fflush(stdout);
-		}
-	}
-
-	printf("\n");
-	return iterations;
 }
 
 // converts a temperature between 0 and 100 to corresponding rgb values
-void convert_to_rgb(int temp, int* r, int* b)
+void convert_to_rgb(double temp, int* r, int* b)
 {
 	// red  == 255 0 0
 	// blue == 0 0 255
@@ -154,7 +98,7 @@ void convert_to_rgb(int temp, int* r, int* b)
 
 // prints a 2x2 matrix as a blue and red picture. 
 // matrix must contain temperature values between 0 and 100
-void imagify(int* new)
+void imagify(double* new)
 {
 	printf("Now printing to image file...\n");
 	FILE *f = fopen("plate.ppm", "w");
@@ -169,7 +113,7 @@ void imagify(int* new)
 		{
 			for (int col = 0; col < PLATESIZE; col++)
 			{
-				int temp = NEW(col, row);
+				double temp = NEW(col, row);
 				int r = 0, b = 0;
 				convert_to_rgb(temp, &r, &b);
 				fprintf(f, "%d %d %d\n", r, 0, b);
@@ -185,21 +129,108 @@ void imagify(int* new)
 	}
 }
 
+// TODO
+void run_calculations(double* old, double* new, int* fixed)
+{
+	for (int row = 0; row < PLATESIZE; row++)
+	{
+		for (int col = 0; col < PLATESIZE; col++)
+		{
+			if (!FIXED(col, row))
+			{
+				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
+				/* For Debugging */
+				// if (col == 2000 && row + 4 == PLATESIZE) {
+				// printf("\nrow: %d  col: %d\nnew: %3.2f, right: %3.2f  left: %3.2f  below: %3.2f  above: %3.2f  old: %3.2f", 
+				// 	row,
+				// 	col,
+				// 	NEW(col, row), 
+				// 	OLD(col+1, row),
+				// 	OLD(col-1, row),
+				// 	OLD(col, row+1),
+				// 	OLD(col, row-1),
+				// 	OLD(col, row));
+				// getchar();}
+			}
+		}
+	}
+}
+
+// TODO
+bool check_for_steady(double* new, int* fixed)
+{
+	for (int row = 0; row < PLATESIZE; row++)
+	{
+		for (int col = 0; col < PLATESIZE; col++)
+		{
+			if (FIXED(col, row))
+			{
+				continue;
+			}
+			else if (fabs(NEW(col,row) - (NEW(col+1,row) + NEW(col-1,row) + NEW(col,row+1) + NEW(col,row-1))/4) > 0.1)
+			{
+				return false;
+			}
+		}
+	}
+	/* For Debugging */
+	// int col = 2000, row = PLATESIZE - 4;
+	// printf("\nrow: %d  col: %d\nnew: %3.2f, right: %3.2f  left: %3.2f  below: %3.2f  above: %3.2f", 
+	// 	row,
+	// 	col,
+	// 	NEW(col, row), 
+	// 	NEW(col+1, row),
+	// 	NEW(col-1, row),
+	// 	NEW(col, row+1),
+	// 	NEW(col, row-1)     );
+	return true;
+}
+
+// TODO
+int distribute_temperature(double* old, double* new, int* fixed)
+{
+	int iterations = 0;
+	bool done = false;
+
+	while (!done)
+	{
+		// to save some swap assignments, I'm just passing the functions the matrices in different orders.
+		// in retrospect I think I'd rename the variables.
+		run_calculations(old, new, fixed);
+		run_calculations(new, old, fixed);
+		done = check_for_steady(old, fixed);
+		iterations += 2;
+		/* For Debugging: Set this number equal to where you want to stop */
+		if (iterations % 400 == 0)
+		{
+			done = true;
+		}
+		if (iterations % 50 == 0) 
+		{
+			printf(".");
+		}
+	}
+
+	printf("\n");
+	return iterations;
+}
+
 // Distributes heat on a hotplate
 int main(void)
 {
 	printf("Initializing...\n");
+	setbuf(stdout, NULL);
 	// start timer
 	double start = when();
 
-	int* old = malloc(sizeof(int) * PLATESIZE * PLATESIZE);
-	int* new = malloc(sizeof(int) * PLATESIZE * PLATESIZE);
-	int* fixed = malloc(sizeof(int) * PLATESIZE * PLATESIZE);
+	double* old = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
+	double* new = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
+	int* fixed = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
 	initialize(old, new, fixed);
 
 	// distribute the heat
 	printf("Calculating");
-	fflush(stdout);
+	// fflush(stdout);
 	int i = distribute_temperature(old, new, fixed);
 
 	// end timer & print to console
