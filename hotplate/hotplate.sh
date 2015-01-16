@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --time=0:05:00   # walltime
-#SBATCH --ntasks=32   # number of processor cores (i.e. tasks)
+#SBATCH --ntasks=16   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
 #SBATCH --mem-per-cpu=1024M   # memory per CPU core
 #SBATCH -J "hotplate"   # job name

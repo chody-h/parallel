@@ -201,7 +201,7 @@ int distribute_temperature(double* old, double* new, int* fixed)
 int main(void)
 {
 	printf("Initializing...\n");
-	for (int i = 0; i < 6; i++)
+	for (int i = 0; i < 5; i++)
 	{
 		int threadcount = 1 << i;
 		omp_set_num_threads(threadcount);
