@@ -7,6 +7,8 @@
 #include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <omp.h>
+// #include <pthread.h>
 
 #define PLATESIZE 		4096
 #define HOT 			100
@@ -131,23 +133,23 @@ void imagify(double* new)
 	}
 }
 
-// SERIAL METHOD TO CALCULATE
-void run_calculations(double* old, double* new, int* fixed)
-{
-	for (int row = 0; row < PLATESIZE; row++)
-	{
-		for (int col = 0; col < PLATESIZE; col++)
-		{
-			if (!FIXED(col, row))
-			{
-				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
-			}
-		}
-	}
-}
+// // SERIAL METHOD TO CALCULATE
+// void run_calculations(double* old, double* new, int* fixed)
+// {
+// 	for (int row = 0; row < PLATESIZE; row++)
+// 	{
+// 		for (int col = 0; col < PLATESIZE; col++)
+// 		{
+// 			if (!FIXED(col, row))
+// 			{
+// 				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
+// 			}
+// 		}
+// 	}
+// }
 
 // Examines the new data to see if any of it needs to be recalculated. If so, it stops immediately.
-bool check_for_steady(double* new, int* fixed)
+bool check_for_steady(double* old, int* fixed)
 {
 	for (int row = 0; row < PLATESIZE; row++)
 	{
@@ -157,7 +159,7 @@ bool check_for_steady(double* new, int* fixed)
 			{
 				continue;
 			}
-			else if (fabs(NEW(col,row) - (NEW(col+1,row) + NEW(col-1,row) + NEW(col,row+1) + NEW(col,row-1))/4) > 0.1)
+			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
 			{
 				return false;
 			}
@@ -170,30 +172,58 @@ bool check_for_steady(double* new, int* fixed)
 int distribute_temperature(double* old, double* new, int* fixed)
 {
 	int iterations = 0;
+	int num_tasks = omp_get_max_threads();
 	bool done = false;
 
+	#pragma omp parallel shared(iterations, done, old, new, fixed)
 	while (!done)
 	{
-		#pragma omp parallel for shared(old, new, fixed)
-		for (int row = 0; row < PLATESIZE; row++)
+		int tid = omp_get_thread_num();
+		int offset = PLATESIZE * tid / num_tasks;
+		int max = offset + PLATESIZE / num_tasks;
+		for (int row = offset; row < max; row++)
 		{
 			for (int col = 0; col < PLATESIZE; col++)
 			{
 				if (!FIXED(col, row))
 				{
-					NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
+					NEW(col, row) = (OLD(col-1, row) + OLD(col+1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
 				}
 			}
 		}
 
-		iterations += 1;
-		double* temp = new;
-		new = old;
-		old = temp;
+		#pragma omp barrier
 
-		done = check_for_steady(old, fixed);
+		if (tid == 0)
+		{
+			iterations += 1;
+			double* temp = new;
+			new = old;
+			old = temp;
+			done = true;
+		}
+
+		#pragma omp barrier
+
+		// done = check_for_steady(old, fixed);
+		for (int row = offset; row < max; row++)
+		{
+			for (int col = 0; col < PLATESIZE; col++)
+			{
+				if (FIXED(col, row))
+				{
+					continue;
+				}
+				else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
+				{
+					done = false;
+				}
+			}
+		}
+
+		#pragma omp barrier
+		// if (iterations > 400) done = true;
 	}
-
 	return iterations;
 }
 
