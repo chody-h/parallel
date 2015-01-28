@@ -21,6 +21,9 @@
 
 typedef enum { false, true } bool;
 
+double* old;
+double* new;
+int* fixed;
 
 // Return the current time in seconds, using a double precision number.
 double when()
@@ -32,7 +35,7 @@ double when()
 
 // Initializes three PLATESIZE X PLATESIZE arrays
 // the third array exists to tell whether or not the temperature at a spot can change
-void initialize(double* old, double* new, int* fixed)
+void initialize()
 {
 	for (int row = 0; row < PLATESIZE; row++)
 	{
@@ -91,18 +94,18 @@ void initialize(double* old, double* new, int* fixed)
 }
 
 // converts a temperature between 0 and 100 to corresponding rgb values
-void convert_to_rgb(double temp, int* r, int* b)
+void convert_to_rgb(double temperature, int* r, int* b)
 {
 	// red  == 255 0 0
 	// blue == 0 0 255
 
-	*r = (int)(2.55 * temp);
-	*b = (int)(255 - (255/100) * temp);
+	*r = (int)(2.55 * temperature);
+	*b = (int)(255 - (255/100) * temperature);
 }
 
 // prints a 2x2 matrix as a blue and red picture. 
 // matrix must contain temperature values between 0 and 100
-void imagify(double* new)
+void imagify()
 {
 	printf("Now printing to image file...\n");
 	FILE *f = fopen("plate.ppm", "w");
@@ -149,7 +152,7 @@ void imagify(double* new)
 // }
 
 // Examines the new data to see if any of it needs to be recalculated. If so, it stops immediately.
-bool check_for_steady(double* old, int* fixed)
+bool check_for_steady()
 {
 	for (int row = 0; row < PLATESIZE; row++)
 	{
@@ -159,7 +162,7 @@ bool check_for_steady(double* old, int* fixed)
 			{
 				continue;
 			}
-			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
+			else if (fabs(NEW(col,row) - (NEW(col+1,row) + NEW(col-1,row) + NEW(col,row+1) + NEW(col,row-1))/4) > 0.1)
 			{
 				return false;
 			}
@@ -168,14 +171,8 @@ bool check_for_steady(double* old, int* fixed)
 	return true;
 }
 
-// calculates new temperatures from the old data set in parallel
-int distribute_temperature(double* old, double* new, int* fixed)
+void *parallel(void *packaged_argument)
 {
-	int iterations = 0;
-	int num_tasks = omp_get_max_threads();
-	bool done = false;
-
-	#pragma omp parallel shared(iterations, done, old, new, fixed)
 	while (!done)
 	{
 		int tid = omp_get_thread_num();
@@ -192,7 +189,7 @@ int distribute_temperature(double* old, double* new, int* fixed)
 			}
 		}
 
-		#pragma omp barrier
+		// #pragma omp barrier
 
 		if (tid == 0)
 		{
@@ -203,9 +200,8 @@ int distribute_temperature(double* old, double* new, int* fixed)
 			done = true;
 		}
 
-		#pragma omp barrier
+		// #pragma omp barrier
 
-		// done = check_for_steady(old, fixed);
 		for (int row = offset; row < max; row++)
 		{
 			for (int col = 0; col < PLATESIZE; col++)
@@ -221,10 +217,8 @@ int distribute_temperature(double* old, double* new, int* fixed)
 			}
 		}
 
-		#pragma omp barrier
-		// if (iterations > 400) done = true;
+		// #pragma omp barrier
 	}
-	return iterations;
 }
 
 // Distributes heat on a hotplate
@@ -234,31 +228,43 @@ int main(void)
 	for (int i = 0; i < 5; i++)
 	{
 		int threadcount = 1 << i;
-		omp_set_num_threads(threadcount);
+
 
 		// start timer
 		double start = when();
 
-		double* old = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
-		double* new = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
-		int*  fixed = malloc(sizeof(int)    * PLATESIZE * PLATESIZE);
+
+		old   = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
+		new   = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
+		fixed = malloc(sizeof(int)    * PLATESIZE * PLATESIZE);
 		initialize(old, new, fixed);
+
 
 		// distribute the heat
 		printf("Calculating with %d threads...\n", threadcount);
-		int i = distribute_temperature(old, new, fixed);
+		int iterations = 0;
+		bool done = false;
+
+		pthread_t threads[threadcount];
+		int args[3] = { iterations, threadcount, done };
+		void *status;
+
+		for (int i = 0; i < threadcount; i++)
+			pthread_create(&threads[i], NULL, parallel, (void*)args);
+
+		for (int i = 0; i < threadcount; i++)
+			pthread_join(threads[i], &status);	
+
 
 		// end timer & print to console
 		double end = when();
-		printf("Performed %3d iterations in %2.2f seconds using %d threads.\n", i, end-start, threadcount);
+		printf("Performed %3d iterations in %2.2f seconds using %d threads.\n", iterations, end-start, threadcount);
+
 
 		free(old);
 		free(new);
 		free(fixed);
 	}
-
-	// print hotplate to .ppm file
-	// imagify(new);
 
 	return 0;
 }
