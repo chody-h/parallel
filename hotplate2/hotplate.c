@@ -9,6 +9,8 @@
 #include <sys/resource.h>
 #include <pthread.h>
 
+
+
 #define PLATESIZE 		4096
 #define HOT 			100
 #define MILD			50
@@ -18,10 +20,28 @@
 #define NEW(c, r)		new  [(c) + PLATESIZE*(r)]	
 #define FIXED(c, r)		fixed[(c) + PLATESIZE*(r)]	
 
+
+
 typedef enum { false, true } bool;
 
-pthread_barrier_t barr;
+typedef struct 
+{
+	pthread_mutex_t count_lock;
+	pthread_cond_t ok_to_proceed;
+	int count;
+} mylib_barrier_t;
+
+typedef struct
+{
+	int threadcount;
+	int tid;
+} pthread_arg;
+
+
+
 pthread_mutex_t mut;
+// pthread_barrier_t barr;
+mylib_barrier_t barr;
 
 double* old;
 double* new;
@@ -29,11 +49,7 @@ int* fixed;
 int iterations;
 bool done;
 
-typedef struct
-{
-	int threadcount;
-	int tid;
-} pthread_arg;
+
 
 // Return the current time in seconds, using a double precision number.
 double when()
@@ -161,24 +177,47 @@ void imagify()
 // 	}
 // }
 
+// // SERIAL METHOD TO CHECK
 // Examines the new data to see if any of it needs to be recalculated. If so, it stops immediately.
-bool check_for_steady()
+// bool check_for_steady()
+// {
+// 	for (int row = 0; row < PLATESIZE; row++)
+// 	{
+// 		for (int col = 0; col < PLATESIZE; col++)
+// 		{
+// 			if (FIXED(col, row))
+// 			{
+// 				continue;
+// 			}
+// 			else if (fabs(NEW(col,row) - (NEW(col+1,row) + NEW(col-1,row) + NEW(col,row+1) + NEW(col,row-1))/4) > 0.1)
+// 			{
+// 				return false;
+// 			}
+// 		}
+// 	}
+// 	return true;
+// }
+
+void mylib_init_linear_barrier(mylib_barrier_t *b)
 {
-	for (int row = 0; row < PLATESIZE; row++)
+	b->count = 0;
+	pthread_mutex_init(&(b->count_lock), NULL);
+	pthread_cond_init(&(b->ok_to_proceed), NULL);
+}
+
+void mylib_barrier(mylib_barrier_t *b, int num_threads)
+{
+	pthread_mutex_lock(&(b->count_lock));
+	b->count++;
+	if (b->count == num_threads)
 	{
-		for (int col = 0; col < PLATESIZE; col++)
-		{
-			if (FIXED(col, row))
-			{
-				continue;
-			}
-			else if (fabs(NEW(col,row) - (NEW(col+1,row) + NEW(col-1,row) + NEW(col,row+1) + NEW(col,row-1))/4) > 0.1)
-			{
-				return false;
-			}
-		}
+		b->count = 0;
+		pthread_cond_broadcast(&(b->ok_to_proceed));
 	}
-	return true;
+	else
+		while(pthread_cond_wait(&(b->ok_to_proceed), &(b->count_lock)) != 0);
+
+	pthread_mutex_unlock(&(b->count_lock));
 }
 
 void *parallel(void *packaged_argument)
@@ -187,7 +226,7 @@ void *parallel(void *packaged_argument)
 	int num_tasks = arg->threadcount;
 	int tid = arg->tid;
 
-	printf("Hi from thread %d. done: %d, num_tasks: %d, iterations: %d\n", tid, (int)done, num_tasks, iterations);
+	// printf("Hi from thread %d. done: %d, num_tasks: %d, iterations: %d\n", tid, (int)done, num_tasks, iterations);
 	int offset = PLATESIZE * tid / num_tasks;
 	int max = offset + PLATESIZE / num_tasks;
 
@@ -204,7 +243,8 @@ void *parallel(void *packaged_argument)
 			}
 		}
 
-		pthread_barrier_wait(&barr);
+		// pthread_barrier_wait(&barr);
+		mylib_barrier(&barr, num_tasks);
 
 		if (tid == 0)
 		{
@@ -215,7 +255,8 @@ void *parallel(void *packaged_argument)
 			done = true;
 		}
 
-		pthread_barrier_wait(&barr);
+		// pthread_barrier_wait(&barr);
+		mylib_barrier(&barr, num_tasks);
 
 		bool my_done = true;
 		for (int row = offset; row < max; row++)
@@ -240,7 +281,8 @@ void *parallel(void *packaged_argument)
 			pthread_mutex_unlock(&mut);
 		}
 
-		pthread_barrier_wait(&barr);
+		// pthread_barrier_wait(&barr);
+		mylib_barrier(&barr, num_tasks);
 
 		// to prevent endless waiting
 		// if (iterations == 400) done = true;
@@ -260,7 +302,8 @@ int main(void)
 		double start = when();
 
 
-		pthread_barrier_init(&barr, NULL, threadcount);
+		// pthread_barrier_init(&barr, NULL, threadcount);
+		mylib_init_linear_barrier(&barr);
 		pthread_mutex_init(&mut, NULL);
 		old   = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
 		new   = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
@@ -289,6 +332,7 @@ int main(void)
 		double end = when();
 		printf("Performed %3d iterations in %2.2f seconds using %d threads.\n", iterations, end-start, threadcount);
 
+		// pthread_barrier_destroy(&barr);
 		free(old);
 		free(new);
 		free(fixed);
