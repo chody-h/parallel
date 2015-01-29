@@ -20,10 +20,12 @@
 
 typedef enum { false, true } bool;
 
+pthread_barrier_t barr;
+pthread_mutex_t mut;
+
 double* old;
 double* new;
 int* fixed;
-
 int iterations;
 bool done;
 
@@ -31,7 +33,7 @@ typedef struct
 {
 	int threadcount;
 	int tid;
-} arg;
+} pthread_arg;
 
 // Return the current time in seconds, using a double precision number.
 double when()
@@ -181,9 +183,9 @@ bool check_for_steady()
 
 void *parallel(void *packaged_argument)
 {
-	arg* args = (arg*)packaged_argument;
-	int num_tasks = args->threadcount;
-	int tid = args->tid;
+	pthread_arg* arg = (pthread_arg*)packaged_argument;
+	int num_tasks = arg->threadcount;
+	int tid = arg->tid;
 
 	printf("Hi from thread %d. done: %d, num_tasks: %d, iterations: %d\n", tid, (int)done, num_tasks, iterations);
 	int offset = PLATESIZE * tid / num_tasks;
@@ -202,7 +204,7 @@ void *parallel(void *packaged_argument)
 			}
 		}
 
-		// #pragma omp barrier
+		pthread_barrier_wait(&barr);
 
 		if (tid == 0)
 		{
@@ -213,8 +215,9 @@ void *parallel(void *packaged_argument)
 			done = true;
 		}
 
-		// #pragma omp barrier
+		pthread_barrier_wait(&barr);
 
+		bool my_done = true;
 		for (int row = offset; row < max; row++)
 		{
 			for (int col = 0; col < PLATESIZE; col++)
@@ -225,13 +228,22 @@ void *parallel(void *packaged_argument)
 				}
 				else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
 				{
-					done = false;
+					my_done = false;
 				}
 			}
 		}
 
-		// #pragma omp barrier
-		if (iterations == 400) done = true;
+		if (my_done == false) 
+		{
+			pthread_mutex_lock(&mut);
+			if (done == true) done = false;
+			pthread_mutex_unlock(&mut);
+		}
+
+		pthread_barrier_wait(&barr);
+
+		// to prevent endless waiting
+		// if (iterations == 400) done = true;
 	}
 }
 
@@ -248,6 +260,8 @@ int main(void)
 		double start = when();
 
 
+		pthread_barrier_init(&barr, NULL, threadcount);
+		pthread_mutex_init(&mut, NULL);
 		old   = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
 		new   = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
 		fixed = malloc(sizeof(int)    * PLATESIZE * PLATESIZE);
@@ -259,13 +273,12 @@ int main(void)
 		// distribute the heat
 		printf("Calculating with %d threads...\n", threadcount);
 		pthread_t threads[threadcount];
-		arg args;
-		args.threadcount = threadcount;
+		pthread_arg* all = malloc(threadcount * sizeof(pthread_arg));
 		for (int i = 0; i < threadcount; i++) 
 		{
-			int TID = i;
-			args.tid = TID;
-			pthread_create(&threads[i], NULL, parallel, (void*)&args);
+			(all+i)->threadcount = threadcount;
+			(all+i)->tid = i;
+			pthread_create(&threads[i], NULL, parallel, (void*) (all+i));
 		}
 
 		for (int i = 0; i < threadcount; i++)
@@ -275,7 +288,6 @@ int main(void)
 		// end timer & print to console
 		double end = when();
 		printf("Performed %3d iterations in %2.2f seconds using %d threads.\n", iterations, end-start, threadcount);
-
 
 		free(old);
 		free(new);
