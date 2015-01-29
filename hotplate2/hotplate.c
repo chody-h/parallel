@@ -7,8 +7,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
-#include <omp.h>
-// #include <pthread.h>
+#include <pthread.h>
 
 #define PLATESIZE 		4096
 #define HOT 			100
@@ -24,6 +23,15 @@ typedef enum { false, true } bool;
 double* old;
 double* new;
 int* fixed;
+
+int iterations;
+bool done;
+
+typedef struct
+{
+	int threadcount;
+	int tid;
+} arg;
 
 // Return the current time in seconds, using a double precision number.
 double when()
@@ -173,11 +181,16 @@ bool check_for_steady()
 
 void *parallel(void *packaged_argument)
 {
+	arg* args = (arg*)packaged_argument;
+	int num_tasks = args->threadcount;
+	int tid = args->tid;
+
+	printf("Hi from thread %d. done: %d, num_tasks: %d, iterations: %d\n", tid, (int)done, num_tasks, iterations);
+	int offset = PLATESIZE * tid / num_tasks;
+	int max = offset + PLATESIZE / num_tasks;
+
 	while (!done)
 	{
-		int tid = omp_get_thread_num();
-		int offset = PLATESIZE * tid / num_tasks;
-		int max = offset + PLATESIZE / num_tasks;
 		for (int row = offset; row < max; row++)
 		{
 			for (int col = 0; col < PLATESIZE; col++)
@@ -218,6 +231,7 @@ void *parallel(void *packaged_argument)
 		}
 
 		// #pragma omp barrier
+		if (iterations == 400) done = true;
 	}
 }
 
@@ -238,22 +252,24 @@ int main(void)
 		new   = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
 		fixed = malloc(sizeof(int)    * PLATESIZE * PLATESIZE);
 		initialize(old, new, fixed);
+		iterations = 0;
+		done = false;
 
 
 		// distribute the heat
 		printf("Calculating with %d threads...\n", threadcount);
-		int iterations = 0;
-		bool done = false;
-
 		pthread_t threads[threadcount];
-		int args[3] = { iterations, threadcount, done };
-		void *status;
+		arg args;
+		args.threadcount = threadcount;
+		for (int i = 0; i < threadcount; i++) 
+		{
+			int TID = i;
+			args.tid = TID;
+			pthread_create(&threads[i], NULL, parallel, (void*)&args);
+		}
 
 		for (int i = 0; i < threadcount; i++)
-			pthread_create(&threads[i], NULL, parallel, (void*)args);
-
-		for (int i = 0; i < threadcount; i++)
-			pthread_join(threads[i], &status);	
+			pthread_join(threads[i], NULL);	
 
 
 		// end timer & print to console
