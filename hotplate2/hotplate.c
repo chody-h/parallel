@@ -41,7 +41,7 @@ typedef struct
 
 pthread_mutex_t mut;
 // pthread_barrier_t barr;
-mylib_barrier_t barr;
+mylib_barrier_t* barriers;
 
 double* old;
 double* new;
@@ -205,7 +205,7 @@ void mylib_init_linear_barrier(mylib_barrier_t *b)
 	pthread_cond_init(&(b->ok_to_proceed), NULL);
 }
 
-void mylib_barrier(mylib_barrier_t *b, int num_threads)
+void mylib_linear_barrier(mylib_barrier_t *b, int num_threads)
 {
 	pthread_mutex_lock(&(b->count_lock));
 	b->count++;
@@ -218,6 +218,11 @@ void mylib_barrier(mylib_barrier_t *b, int num_threads)
 		while(pthread_cond_wait(&(b->ok_to_proceed), &(b->count_lock)) != 0);
 
 	pthread_mutex_unlock(&(b->count_lock));
+}
+
+void mylib_log_barrier(mylib_barrier_t *b, int num_threads)
+{
+
 }
 
 void *parallel(void *packaged_argument)
@@ -244,7 +249,8 @@ void *parallel(void *packaged_argument)
 		}
 
 		// pthread_barrier_wait(&barr);
-		mylib_barrier(&barr, num_tasks);
+		// mylib_linear_barrier(&barr, num_tasks);
+		mylib_log_barrier(&barr, num_tasks);
 
 		if (tid == 0)
 		{
@@ -256,7 +262,8 @@ void *parallel(void *packaged_argument)
 		}
 
 		// pthread_barrier_wait(&barr);
-		mylib_barrier(&barr, num_tasks);
+		// mylib_linear_barrier(&barr, num_tasks);
+		mylib_log_barrier(&barr, num_tasks);
 
 		bool my_done = true;
 		for (int row = offset; row < max; row++)
@@ -282,7 +289,8 @@ void *parallel(void *packaged_argument)
 		}
 
 		// pthread_barrier_wait(&barr);
-		mylib_barrier(&barr, num_tasks);
+		// mylib_linear_barrier(&barr, num_tasks);
+		mylib_log_barrier(&barr, num_tasks);
 
 		// to prevent endless waiting
 		// if (iterations == 400) done = true;
