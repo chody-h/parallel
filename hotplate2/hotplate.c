@@ -29,7 +29,7 @@ typedef struct
 	pthread_mutex_t count_lock;
 	pthread_cond_t ok_to_proceed;
 	int count;
-} mylib_barrier_t;
+} mylib_linear_barrier_t;
 
 typedef struct
 {
@@ -41,13 +41,122 @@ typedef struct
 
 pthread_mutex_t mut;
 // pthread_barrier_t barr;
-mylib_barrier_t* barriers;
 
 double* old;
 double* new;
 int* fixed;
 int iterations;
 bool done;
+
+/* --- LOG BARRIER PROVIDED BY DR SNELL --- */
+
+#define MAX_THREADS 	16
+
+typedef struct barrier_node {
+        pthread_mutex_t count_lock;
+        pthread_cond_t ok_to_proceed_up;
+        pthread_cond_t ok_to_proceed_down;
+        int count;
+} mylib_barrier_t_internal;
+
+typedef struct barrier_node mylob_logbarrier_t[MAX_THREADS];
+int number_in_barrier = 0;
+pthread_mutex_t logbarrier_count_lock;
+int keepgoing;
+int* lkeepgoing;
+
+void mylib_logbarrier (mylob_logbarrier_t b, int num_threads, int thread_id);
+void mylib_init_barrier(mylob_logbarrier_t b);
+
+mylob_logbarrier_t barr;
+
+void mylib_init_barrier(mylob_logbarrier_t b)
+{
+        int i;
+        for (i = 0; i < MAX_THREADS; i++) {
+                b[i].count = 0;
+                pthread_mutex_init(&(b[i].count_lock), NULL);
+                pthread_cond_init(&(b[i].ok_to_proceed_up), NULL);
+                pthread_cond_init(&(b[i].ok_to_proceed_down), NULL);
+        }
+        pthread_mutex_init(&logbarrier_count_lock, NULL);
+}
+
+void mylib_logbarrier (mylob_logbarrier_t b, int num_threads, int thread_id)
+{
+        int i, q, base, index;
+        double *tmp;
+        i = 2;
+        base = 0;
+
+        if (num_threads == 1)
+            return;
+
+        pthread_mutex_lock(&logbarrier_count_lock);
+        number_in_barrier++;
+        if (number_in_barrier == num_threads)
+        {
+                /* I am the last one in */
+                /* swap the new value pointer with the old value pointer */
+                // tmp = old;
+                // old = new;
+                // new = tmp;
+                /*
+                fprintf(stderr,"%d: swapping pointers\n", thread_id);
+                */
+
+                /* set the keepgoing flag and let everybody go */
+                keepgoing = 0;
+                for (q = 0; q < num_threads; q++)
+                    keepgoing += lkeepgoing[q];
+        }
+        pthread_mutex_unlock(&logbarrier_count_lock);
+
+        do {
+                index = base + thread_id / i;
+                if (thread_id % i == 0) {
+                        pthread_mutex_lock(&(b[index].count_lock));
+                        b[index].count ++;
+                        while (b[index].count < 2)
+                              pthread_cond_wait(&(b[index].ok_to_proceed_up),
+                                        &(b[index].count_lock));
+                        pthread_mutex_unlock(&(b[index].count_lock));
+                }
+                else {
+                        pthread_mutex_lock(&(b[index].count_lock));
+                        b[index].count ++;
+                        if (b[index].count == 2)
+                           pthread_cond_signal(&(b[index].ok_to_proceed_up));
+/*
+            while (b[index].count != 0)
+*/
+            while (
+                               pthread_cond_wait(&(b[index].ok_to_proceed_down),
+                                    &(b[index].count_lock)) != 0);
+            pthread_mutex_unlock(&(b[index].count_lock));
+            break;
+                }
+                base = base + num_threads/i;
+                i = i * 2;
+        } while (i <= num_threads);
+
+        i = i / 2;
+
+        for (; i > 1; i = i / 2)
+        {
+        base = base - num_threads/i;
+                index = base + thread_id / i;
+                pthread_mutex_lock(&(b[index].count_lock));
+                b[index].count = 0;
+                pthread_cond_signal(&(b[index].ok_to_proceed_down));
+                pthread_mutex_unlock(&(b[index].count_lock));
+        }
+        pthread_mutex_lock(&logbarrier_count_lock);
+        number_in_barrier--;
+        pthread_mutex_unlock(&logbarrier_count_lock);
+}
+
+/* --- END LOG BARRIER PROVIDED BY DR SNELL --- */
 
 
 
@@ -198,32 +307,27 @@ void imagify()
 // 	return true;
 // }
 
-void mylib_init_linear_barrier(mylib_barrier_t *b)
-{
-	b->count = 0;
-	pthread_mutex_init(&(b->count_lock), NULL);
-	pthread_cond_init(&(b->ok_to_proceed), NULL);
-}
+// void mylib_init_linear_barrier(mylib_barrier_t *b)
+// {
+// 	b->count = 0;
+// 	pthread_mutex_init(&(b->count_lock), NULL);
+// 	pthread_cond_init(&(b->ok_to_proceed), NULL);
+// }
 
-void mylib_linear_barrier(mylib_barrier_t *b, int num_threads)
-{
-	pthread_mutex_lock(&(b->count_lock));
-	b->count++;
-	if (b->count == num_threads)
-	{
-		b->count = 0;
-		pthread_cond_broadcast(&(b->ok_to_proceed));
-	}
-	else
-		while(pthread_cond_wait(&(b->ok_to_proceed), &(b->count_lock)) != 0);
+// void mylib_linear_barrier(mylib_barrier_t *b, int num_threads)
+// {
+// 	pthread_mutex_lock(&(b->count_lock));
+// 	b->count++;
+// 	if (b->count == num_threads)
+// 	{
+// 		b->count = 0;
+// 		pthread_cond_broadcast(&(b->ok_to_proceed));
+// 	}
+// 	else
+// 		while(pthread_cond_wait(&(b->ok_to_proceed), &(b->count_lock)) != 0);
 
-	pthread_mutex_unlock(&(b->count_lock));
-}
-
-void mylib_log_barrier(mylib_barrier_t *b, int num_threads)
-{
-
-}
+// 	pthread_mutex_unlock(&(b->count_lock));
+// }
 
 void *parallel(void *packaged_argument)
 {
@@ -250,7 +354,7 @@ void *parallel(void *packaged_argument)
 
 		// pthread_barrier_wait(&barr);
 		// mylib_linear_barrier(&barr, num_tasks);
-		mylib_log_barrier(&barr, num_tasks);
+		mylib_logbarrier(barr, num_tasks, tid);
 
 		if (tid == 0)
 		{
@@ -263,7 +367,7 @@ void *parallel(void *packaged_argument)
 
 		// pthread_barrier_wait(&barr);
 		// mylib_linear_barrier(&barr, num_tasks);
-		mylib_log_barrier(&barr, num_tasks);
+		mylib_logbarrier(barr, num_tasks, tid);
 
 		bool my_done = true;
 		for (int row = offset; row < max; row++)
@@ -290,10 +394,14 @@ void *parallel(void *packaged_argument)
 
 		// pthread_barrier_wait(&barr);
 		// mylib_linear_barrier(&barr, num_tasks);
-		mylib_log_barrier(&barr, num_tasks);
+		mylib_logbarrier(barr, num_tasks, tid);
 
 		// to prevent endless waiting
-		// if (iterations == 400) done = true;
+		if (iterations == 400) 
+		{
+			printf("Aborting.");
+			done = true;
+		}
 	}
 }
 
@@ -301,7 +409,7 @@ void *parallel(void *packaged_argument)
 int main(void)
 {
 	printf("Initializing...\n");
-	for (int i = 0; i < 5; i++)
+	for (int i = 1; i < 5; i++)
 	{
 		int threadcount = 1 << i;
 
@@ -309,9 +417,8 @@ int main(void)
 		// start timer
 		double start = when();
 
-
 		// pthread_barrier_init(&barr, NULL, threadcount);
-		mylib_init_linear_barrier(&barr);
+		mylib_init_barrier(barr);
 		pthread_mutex_init(&mut, NULL);
 		old   = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
 		new   = malloc(sizeof(double) * PLATESIZE * PLATESIZE);
