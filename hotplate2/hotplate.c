@@ -409,7 +409,7 @@ void *parallel(void *packaged_argument)
 int main(void)
 {
 	printf("Initializing...\n");
-	for (int i = 1; i < 5; i++)
+	for (int i = 0; i < 5; i++)
 	{
 		int threadcount = 1 << i;
 
