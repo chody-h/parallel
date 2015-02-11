@@ -1,5 +1,5 @@
 /*  CS 484 - Parallel Processing
-	Project 1 - Hotplate	*/
+	Project 2 - Hotplate	*/
 
 #include <stdio.h>
 #include <stdlib.h>
