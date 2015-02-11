@@ -131,7 +131,7 @@ void reduce (int argc, char *argv[])
 				{
 					message[j] += tempArray[j];
 				}
-			}
+			}dfaskdj
 		}
 		mask = mask ^ twoToTheI;
 	}
