@@ -30,6 +30,7 @@ int num_rows;
 int main(int argc, char *argv[])
 {
     double starttime;
+    int iterations = 0;
 
     // MPI_Status status;
 
@@ -38,7 +39,7 @@ int main(int argc, char *argv[])
 
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
     MPI_Comm_rank(MPI_COMM_WORLD, &iproc);
-    fprintf(stderr,"%d: Hello from %d of %d\n", iproc, iproc, nproc);
+    fprintf(stderr, "%d: Hello from %d of %d\n", iproc, iproc, nproc);
 
 	InitializeRows();
 
@@ -71,7 +72,12 @@ int main(int argc, char *argv[])
 		converged = Check(num_rows, row_up, row_down, old, fixed);
 		// int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
 		MPI_Allreduce(&converged, &converged, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+	
+		iterations++;
 	}
+
+    if (iproc == 0) 
+    	fprintf(stderr, "It took %d iterations and %lf seconds to converge.\n", iterations, When() - starttime);
 
 	// TODO: reduce all rows to a single node for printing
 	// if (iproc == 0) PrintToFile();
@@ -183,6 +189,7 @@ bool Check()
 			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
 				return false;
 
+	// NORMAL ROWS
 	for (row = 1; row < num_rows-1; row++)
 		for (int col = 0; col < PLATESIZE; col++)
 			if (FIXED(col, row))
@@ -190,6 +197,7 @@ bool Check()
 			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
 				return false;
 
+	// BOTTOM ROW
 	row = num_rows-1;
 	if (iproc != nproc-1)
 		for (int col = 0; col < PLATESIZE; col++)
