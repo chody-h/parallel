@@ -16,7 +16,7 @@ typedef enum {false, true} bool;
 double When();
 void InitializeRows();
 void Calculate();
-void Swap();
+void CheckAndSwap();
 void Reduce();
 void PrintToFile();
 
@@ -24,8 +24,9 @@ int main(int argc, char *argv[])
 {
     // declare algorithm variables here
 	int start_row, num_rows, remain;
-	double* old, new;
+	double* old, new, row_up, row_down;
 	int* fixed;
+	bool converged = false;
 
     double starttime;
 
@@ -39,20 +40,38 @@ int main(int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &iproc);
     fprintf(stderr,"%d: Hello from %d of %d\n", iproc, iproc, nproc);
 
-    /* decide how much i need to do and where */
+    /* decide how much I need to do and where */
     remain = ( (iproc == nproc-1) ? (size % nproc) : 0);
     num_rows = size/nproc + remain;
     start_row = iproc * num_rows;
 	InitializeRows(start_row, num_rows, old, new, fixed);
 
-	while () 
-	{
-		Send();
-		Receive();
+    row_up = malloc(sizeof(double) * PLATESIZE);
+    row_down = malloc(sizeof(double) * PLATESIZE);
 
+	while (!converged) 
+	{
+        /* First, I must get my neighbors' boundary values */
+        // Exchange with above
+        if (iproc != 0)
+        {
+        	// int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request)
+            MPI_ISend(&old[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD);
+            // MPI_Recv(&old[0], 1, MPI_FLOAT, iproc - 1, 0, MPI_COMM_WORLD, &status);
+        }
+        // Exchange with below
+        else if (iproc != nproc - 1)
+        {
+            MPI_ISend(&old[num_rows-1], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD);
+            // MPI_Recv(&oA[theSize + 1], 1, MPI_FLOAT, iproc + 1, 0, MPI_COMM_WORLD, &status);
+        }
+
+        /* Then run calculations */
 		Calculate();
 
-		Swap();
+		/* Finally, check if it has converged. If not, swap the pointers. */
+		// TODO: reduce to see if everyone is done
+		converged = CheckAndSwap(old, new);
 	}
 
 	Reduce();
