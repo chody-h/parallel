@@ -14,21 +14,20 @@
 typedef enum {false, true} bool;
 
 double When();
-void InitializeRows(double*, double*, int*);
+void InitializeRows();
 void Calculate();
 void CheckAndSwap();
 void Reduce();
 void PrintToFile();
 
 int nproc, iproc;
+double* old, new, row_up, row_down;
+int* fixed;
+bool converged, global_converged;
+int num_rows;
 
 int main(int argc, char *argv[])
 {
-    // declare algorithm variables here
-	double* old, new, row_up, row_down;
-	int* fixed;
-	bool converged = false;
-
     double starttime;
 
     // MPI_Status status;
@@ -40,7 +39,7 @@ int main(int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &iproc);
     fprintf(stderr,"%d: Hello from %d of %d\n", iproc, iproc, nproc);
 
-	InitializeRows(start_row, num_rows, old, new, fixed);
+	InitializeRows();
 
     row_up = malloc(sizeof(double) * PLATESIZE);
     row_down = malloc(sizeof(double) * PLATESIZE);
@@ -58,25 +57,25 @@ int main(int argc, char *argv[])
             MPI_Irecv(&row_up[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD);
         }
         // Exchange with below
-        else if (iproc != nproc - 1)
+        else if (iproc != nproc-1)
         {
             MPI_Isend(&old[num_rows-1], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD);
             MPI_Irecv(&row_down[0], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD);
         }
 
         /* Then run calculations */
-		Calculate(old, new, fixed, row_up, row_down);
+		Calculate(num_rows, old, new, fixed, row_up, row_down);
 
 		/* Finally, check if it has converged. If not, swap the pointers. */
+		converged = Check(num_rows, row_up, row_down, old, fixed);
 		// TODO: reduce to see if everyone is done
-		converged = CheckAndSwap(old, new);
+		Reduce();
 	}
 
-	Reduce();
 	PrintToFile();
 }
 
-// Return the current time in seconds, using a double precision number.
+/* Return the current time in seconds, using a double precision number. */
 double When()
 {
 	struct timeval tp;
@@ -84,9 +83,9 @@ double When()
 	return ((double) tp.tv_sec + (double) tp.tv_usec * 1e-6);
 }
 
-void InitializeRows(double* old, double* new, int* fixed) 
+int InitializeRows() 
 {
-	int start_row, num_rows, remain;
+	int start_row, remain;
 
     /* decide how much I need to do and where */
     remain = ( (iproc == nproc-1) ? (PLATESIZE % nproc) : 0);
@@ -141,37 +140,56 @@ void InitializeRows(double* old, double* new, int* fixed)
 	}
 }
 
-void Calculate(int num_rows, double* old, double* new, int* fixed, double* row_up, double* row_down);
+/* Core of hotplate algorithm. */
+void Calculate()
 {
 	// TOP ROW
 	int row = 0;
-	for (int col = 0; col < PLATESIZE; col++)
-	{
-		if (!FIXED(col, row) && iproc != 0)
-		{
-			NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + row_up[col] + 4 * OLD(col, row))/8;
-		}
-	}
+	if (iproc != 0)
+		for (int col = 0; col < PLATESIZE; col++)
+			if (!FIXED(col, row))
+				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + row_up[col] + 4 * OLD(col, row))/8;
 
 	// NORMAL ROWS
 	for (row = 1; row < num_rows-1; row++)
-	{
 		for (int col = 0; col < PLATESIZE; col++)
-		{
 			if (!FIXED(col, row))
-			{
 				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
-			}
-		}
-	}
 
 	// BOTTOM ROW
 	row = num_rows-1;
-	for (int col = 0; col < PLATESIZE; col++)
-	{
-		if (!FIXED(col, row) && iproc != nproc-1)
-		{
-			NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + row_down[col] + OLD(col, row-1) + 4 * OLD(col, row))/8;
-		}
-	}
+	if (iproc != nproc-1)
+		for (int col = 0; col < PLATESIZE; col++)
+			if (!FIXED(col, row))
+				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + row_down[col] + OLD(col, row-1) + 4 * OLD(col, row))/8;
+}
+
+/* Examines the new data to see if any of it needs to be recalculated. If so, it stops immediately. */
+bool Check()
+{
+	// TOP ROW
+	int row = 0;
+	if (iproc != 0)
+		for (int col = 0; col < PLATESIZE; col++)
+			if (FIXED(col, row))
+				continue;
+			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
+				return false;
+
+	for (row = 1; row < num_rows-1; row++)
+		for (int col = 0; col < PLATESIZE; col++)
+			if (FIXED(col, row))
+				continue;
+			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
+				return false;
+
+	row = num_rows-1;
+	if (iproc != nproc-1)
+		for (int col = 0; col < PLATESIZE; col++)
+			if (FIXED(col, row))
+				continue;
+			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
+				return false;
+
+	return true;
 }
