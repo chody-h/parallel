@@ -14,24 +14,24 @@
 typedef enum {false, true} bool;
 
 double When();
-void InitializeRows();
+void InitializeRows(double*, double*, int*);
 void Calculate();
 void CheckAndSwap();
 void Reduce();
 void PrintToFile();
 
+int nproc, iproc;
+
 int main(int argc, char *argv[])
 {
     // declare algorithm variables here
-	int start_row, num_rows, remain;
 	double* old, new, row_up, row_down;
 	int* fixed;
 	bool converged = false;
 
     double starttime;
 
-    int nproc, iproc;
-    MPI_Status status;
+    // MPI_Status status;
 
     MPI_Init(&argc, &argv);
     starttime = When();
@@ -40,10 +40,6 @@ int main(int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &iproc);
     fprintf(stderr,"%d: Hello from %d of %d\n", iproc, iproc, nproc);
 
-    /* decide how much I need to do and where */
-    remain = ( (iproc == nproc-1) ? (size % nproc) : 0);
-    num_rows = size/nproc + remain;
-    start_row = iproc * num_rows;
 	InitializeRows(start_row, num_rows, old, new, fixed);
 
     row_up = malloc(sizeof(double) * PLATESIZE);
@@ -52,22 +48,24 @@ int main(int argc, char *argv[])
 	while (!converged) 
 	{
         /* First, I must get my neighbors' boundary values */
+        	// int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request)
+            // int MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag, MPI_Comm comm, MPI_Request *request)
+            
         // Exchange with above
         if (iproc != 0)
         {
-        	// int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request)
-            MPI_ISend(&old[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD);
-            // MPI_Recv(&old[0], 1, MPI_FLOAT, iproc - 1, 0, MPI_COMM_WORLD, &status);
+            MPI_Isend(&old[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD);
+            MPI_Irecv(&row_up[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD);
         }
         // Exchange with below
         else if (iproc != nproc - 1)
         {
-            MPI_ISend(&old[num_rows-1], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD);
-            // MPI_Recv(&oA[theSize + 1], 1, MPI_FLOAT, iproc + 1, 0, MPI_COMM_WORLD, &status);
+            MPI_Isend(&old[num_rows-1], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD);
+            MPI_Irecv(&row_down[0], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD);
         }
 
         /* Then run calculations */
-		Calculate();
+		Calculate(old, new, fixed, row_up, row_down);
 
 		/* Finally, check if it has converged. If not, swap the pointers. */
 		// TODO: reduce to see if everyone is done
@@ -86,8 +84,15 @@ double When()
 	return ((double) tp.tv_sec + (double) tp.tv_usec * 1e-6);
 }
 
-void InitializeRows(int start_row, int num_rows, double* old, double* new, int* fixed) 
+void InitializeRows(double* old, double* new, int* fixed) 
 {
+	int start_row, num_rows, remain;
+
+    /* decide how much I need to do and where */
+    remain = ( (iproc == nproc-1) ? (PLATESIZE % nproc) : 0);
+    num_rows = PLATESIZE/nproc + remain;
+    start_row = iproc * num_rows;
+
 	old   = malloc(sizeof(double) * num_rows * PLATESIZE);
 	new   = malloc(sizeof(double) * num_rows * PLATESIZE);
 	fixed = malloc(sizeof(int)    * num_rows * PLATESIZE);
@@ -132,6 +137,41 @@ void InitializeRows(int start_row, int num_rows, double* old, double* new, int* 
 				NEW(col, row) = MILD;
 				FIXED(col, row) = false;
 			}
+		}
+	}
+}
+
+void Calculate(int num_rows, double* old, double* new, int* fixed, double* row_up, double* row_down);
+{
+	// TOP ROW
+	int row = 0;
+	for (int col = 0; col < PLATESIZE; col++)
+	{
+		if (!FIXED(col, row) && iproc != 0)
+		{
+			NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + row_up[col] + 4 * OLD(col, row))/8;
+		}
+	}
+
+	// NORMAL ROWS
+	for (row = 1; row < num_rows-1; row++)
+	{
+		for (int col = 0; col < PLATESIZE; col++)
+		{
+			if (!FIXED(col, row))
+			{
+				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
+			}
+		}
+	}
+
+	// BOTTOM ROW
+	row = num_rows-1;
+	for (int col = 0; col < PLATESIZE; col++)
+	{
+		if (!FIXED(col, row) && iproc != nproc-1)
+		{
+			NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + row_down[col] + OLD(col, row-1) + 4 * OLD(col, row))/8;
 		}
 	}
 }
