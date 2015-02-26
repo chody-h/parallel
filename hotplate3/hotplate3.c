@@ -14,10 +14,11 @@
 typedef enum {false, true} bool;
 
 double When();
+double fabs(double d);
+
 void InitializeRows();
 void Calculate();
-void CheckAndSwap();
-void Reduce();
+void Check();
 void PrintToFile();
 
 int nproc, iproc;
@@ -68,11 +69,12 @@ int main(int argc, char *argv[])
 
 		/* Finally, check if it has converged. If not, swap the pointers. */
 		converged = Check(num_rows, row_up, row_down, old, fixed);
-		// TODO: reduce to see if everyone is done
-		Reduce();
+		// int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
+		MPI_Allreduce(&converged, &converged, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
 	}
 
-	PrintToFile();
+	// TODO: reduce all rows to a single node for printing
+	// if (iproc == 0) PrintToFile();
 }
 
 /* Return the current time in seconds, using a double precision number. */
@@ -81,6 +83,11 @@ double When()
 	struct timeval tp;
 	gettimeofday(&tp, NULL);
 	return ((double) tp.tv_sec + (double) tp.tv_usec * 1e-6);
+}
+
+double fabs(double d)
+{
+	return (d > 0.0) ? d : -d ;
 }
 
 int InitializeRows() 
@@ -192,4 +199,37 @@ bool Check()
 				return false;
 
 	return true;
+}
+
+void PrintToFile()
+{
+	File *f;
+	double temp;
+	int r, b;
+
+	printf("Now printing to image file...\n");
+	f = fopen("plate.ppm", "w");
+	if (f != NULL)
+	{
+		fprintf(f, "P3\n");
+		fprintf(f, "#plate.ppm\n");
+		fprintf(f, "%d %d\n", PLATESIZE, PLATESIZE);
+		fprintf(f, "255\n\n");
+
+		for (int row = 0; row < PLATESIZE; row++)
+		{
+			for (int col = 0; col < PLATESIZE; col++)
+			{
+				temp = NEW(col, row);
+				r = (int)(2.55 * temp);
+				b = (int)(255 - (255/100) * temp);
+				fprintf(f, "%d %d %d\n", r, 0, b);
+			}
+		}
+		fclose(f);
+
+		printf("Done printing to file.\n");
+	}
+	else
+		printf("Error opening file.\n");
 }
