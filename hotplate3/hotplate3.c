@@ -17,9 +17,9 @@ typedef enum {false, true} bool;
 double When();
 double fabs(double d);
 
-void InitializeRows();
-void Calculate();
-bool Check();
+void InitializeRows(int, double*, double*, int*);
+void Calculate(double*, double*, double*, double*, int*);
+bool Check(double*, double*, double*, int*);
 void PrintToFile();
 
 int nproc, iproc;
@@ -31,50 +31,73 @@ int main(int argc, char *argv[])
     double starttime;
     int iterations = 0;
 
-    // MPI_Status status;
-    MPI_Request request;
+	int start_row, remain;
+    double* old;
+    double* new;
+    int* fixed;
+    double* row_up;
+    double* row_down;
+
+    MPI_Status status;
+    MPI_Request request_top, request_bottom;
 
     MPI_Init(&argc, &argv);
     starttime = When();
 
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
     MPI_Comm_rank(MPI_COMM_WORLD, &iproc);
-    fprintf(stderr, "%d: Hello from %d of %d\n", iproc, iproc, nproc);
+    fprintf(stderr, "%d: Hello from thread %d! (total %d)\n", iproc, iproc, nproc);
 
-    double* old, new;
-    int* fixed;
+    /* decide how much I need to do and where */
+    remain = ( (iproc == nproc-1) ? (PLATESIZE % nproc) : 0 );
+    num_rows = PLATESIZE/nproc + remain;
+    start_row = iproc * num_rows;
+    fprintf(stderr, "(%d) I will start on row %d and calculate %d rows.\n", iproc, start_row, num_rows);
 
-	InitializeRows(old, new, fixed);
+	old      = malloc(sizeof(double) * PLATESIZE * num_rows);
+	new      = malloc(sizeof(double) * PLATESIZE * num_rows);
+	fixed    = malloc(sizeof(int)    * PLATESIZE * num_rows);
+    row_up   = malloc(sizeof(double) * PLATESIZE);
+    row_down = malloc(sizeof(double) * PLATESIZE);
 
-    double* row_up = malloc(sizeof(double) * PLATESIZE);
-    double* row_down = malloc(sizeof(double) * PLATESIZE);
+	InitializeRows(start_row, old, new, fixed);
+
+	fprintf(stderr, "Calculating...\n");
 
 	while (!converged) 
 	{
+		// fprintf(stderr, "Exchanging...");
+
         /* First, I must get my neighbors' boundary values */
-        	// int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request)
             // int MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag, MPI_Comm comm, MPI_Request *request)
             
         // Exchange with above
         if (iproc != 0)
         {
-            MPI_Isend(&old[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD, &request);
-            MPI_Irecv(&row_up, PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD, &request);
+            MPI_Send(&old[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD);
+            MPI_Irecv(&row_up, PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD, &request_top);
         }
         // Exchange with below
-        else if (iproc != nproc-1)
+        if (iproc != nproc-1)
         {
-            MPI_Isend(&old[num_rows-1], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD, &request);
-            MPI_Irecv(&row_down, PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD, &request);
+            MPI_Send(&old[num_rows-1], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD);
+            MPI_Irecv(&row_down, PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD, &request_bottom);
         }
 
+        if (iproc != 0) MPI_Wait(&request_top, &status);
+        if (iproc != nproc-1) MPI_Wait(&request_bottom, &status);
+        // fprintf(stderr, "Done exchanging.");
+
         /* Then run calculations */
-		Calculate(row_up, row_down);
+		Calculate(row_up, row_down, old, new, fixed);
 
 		/* Finally, check if it has converged. If not, swap the pointers. */
-		converged = Check(num_rows, row_up, row_down, old, fixed);
+		converged = Check(row_up, row_down, old, fixed);
+		fprintf(stderr, "converged: %d\n", converged);
 		// int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
 		MPI_Allreduce(&converged, &converged, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+
+		// WAIT
 	
 		iterations++;
 	}
@@ -82,6 +105,7 @@ int main(int argc, char *argv[])
     if (iproc == 0) 
     	fprintf(stderr, "It took %d iterations and %lf seconds to converge.\n", iterations, When() - starttime);
 
+    MPI_Finalize();
 	// TODO: reduce all rows to a single node for printing
 	// if (iproc == 0) PrintToFile();
 }
@@ -99,19 +123,10 @@ double fabs(double d)
 	return (d > 0.0) ? d : -d ;
 }
 
-void InitializeRows(double* old, double* new, int* fixed) 
+void InitializeRows(int start_row, double* old, double* new, int* fixed) 
 {
-	int start_row, remain;
+	fprintf(stderr, "Initializing Rows...\n");
 	int row, abs_row, col;
-
-    /* decide how much I need to do and where */
-    remain = ( (iproc == nproc-1) ? (PLATESIZE % nproc) : 0 );
-    num_rows = PLATESIZE/nproc + remain;
-    start_row = iproc * num_rows;
-
-	old   = malloc(sizeof(double) * num_rows * PLATESIZE);
-	new   = malloc(sizeof(double) * num_rows * PLATESIZE);
-	fixed = malloc(sizeof(int)    * num_rows * PLATESIZE);
 
 	for (row = 0; row < num_rows; row++) 
 	{
@@ -155,36 +170,41 @@ void InitializeRows(double* old, double* new, int* fixed)
 			}
 		}
 	}
+	fprintf(stderr, "Done Initializing Rows.\n");
 }
 
 /* Core of hotplate algorithm. */
-void Calculate()
+void Calculate(double* row_up, double* row_down, double* old, double* new, int* fixed)
 {
 	int row, col;
 
+	// fprintf(stderr, "top.\n");
 	// TOP ROW
 	row = 0;
 	if (iproc != 0)
 		for (col = 0; col < PLATESIZE; col++)
-			if (!FIXED(col, row))
-				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + row_up[col] + 4 * OLD(col, row))/8;
+			if (!FIXED(col, row)) 
+				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + row_up[col] + 4*OLD(col, row))/8;
 
+	// fprintf(stderr, "normal.\n");
 	// NORMAL ROWS
-	for (row = 1; row < num_rows-1; row++)
+	for (row = 1; row < num_rows-1; row++) 
 		for (col = 0; col < PLATESIZE; col++)
-			if (!FIXED(col, row))
-				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
+			if (!FIXED(col, row)) 
+				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4*OLD(col, row))/8;
 
+	// fprintf(stderr, "bottom.\n");
 	// BOTTOM ROW
 	row = num_rows-1;
 	if (iproc != nproc-1)
 		for (col = 0; col < PLATESIZE; col++)
-			if (!FIXED(col, row))
-				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + row_down[col] + OLD(col, row-1) + 4 * OLD(col, row))/8;
+			if (!FIXED(col, row)) 
+				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + row_down[col] + OLD(col, row-1) + 4*OLD(col, row))/8;
+	// fprintf(stderr, "done.\n");
 }
 
 /* Examines the new data to see if any of it needs to be recalculated. If so, it stops immediately. */
-bool Check()
+bool Check(double* row_up, double* row_down, double* old, int* fixed)
 {
 	int row, col;
 
@@ -194,7 +214,7 @@ bool Check()
 		for (col = 0; col < PLATESIZE; col++)
 			if (FIXED(col, row))
 				continue;
-			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
+			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + row_up[col])/4) > 0.1)
 				return false;
 
 	// NORMAL ROWS
@@ -211,7 +231,7 @@ bool Check()
 		for (col = 0; col < PLATESIZE; col++)
 			if (FIXED(col, row))
 				continue;
-			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
+			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + row_down[col] + OLD(col,row-1))/4) > 0.1)
 				return false;
 
 	return true;
