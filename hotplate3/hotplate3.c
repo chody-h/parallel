@@ -1,4 +1,5 @@
 #include <mpi.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <sys/time.h>
 
@@ -18,12 +19,10 @@ double fabs(double d);
 
 void InitializeRows();
 void Calculate();
-void Check();
+bool Check();
 void PrintToFile();
 
 int nproc, iproc;
-double* old, new, row_up, row_down;
-int* fixed;
 bool converged, global_converged;
 int num_rows;
 
@@ -33,6 +32,7 @@ int main(int argc, char *argv[])
     int iterations = 0;
 
     // MPI_Status status;
+    MPI_Request request;
 
     MPI_Init(&argc, &argv);
     starttime = When();
@@ -41,10 +41,13 @@ int main(int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &iproc);
     fprintf(stderr, "%d: Hello from %d of %d\n", iproc, iproc, nproc);
 
-	InitializeRows();
+    double* old, new;
+    int* fixed;
 
-    row_up = malloc(sizeof(double) * PLATESIZE);
-    row_down = malloc(sizeof(double) * PLATESIZE);
+	InitializeRows(old, new, fixed);
+
+    double* row_up = malloc(sizeof(double) * PLATESIZE);
+    double* row_down = malloc(sizeof(double) * PLATESIZE);
 
 	while (!converged) 
 	{
@@ -55,18 +58,18 @@ int main(int argc, char *argv[])
         // Exchange with above
         if (iproc != 0)
         {
-            MPI_Isend(&old[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD);
-            MPI_Irecv(&row_up[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD);
+            MPI_Isend(&old[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD, &request);
+            MPI_Irecv(&row_up, PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD, &request);
         }
         // Exchange with below
         else if (iproc != nproc-1)
         {
-            MPI_Isend(&old[num_rows-1], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD);
-            MPI_Irecv(&row_down[0], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD);
+            MPI_Isend(&old[num_rows-1], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD, &request);
+            MPI_Irecv(&row_down, PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD, &request);
         }
 
         /* Then run calculations */
-		Calculate(num_rows, old, new, fixed, row_up, row_down);
+		Calculate(row_up, row_down);
 
 		/* Finally, check if it has converged. If not, swap the pointers. */
 		converged = Check(num_rows, row_up, row_down, old, fixed);
@@ -96,12 +99,13 @@ double fabs(double d)
 	return (d > 0.0) ? d : -d ;
 }
 
-int InitializeRows() 
+void InitializeRows(double* old, double* new, int* fixed) 
 {
 	int start_row, remain;
+	int row, abs_row, col;
 
     /* decide how much I need to do and where */
-    remain = ( (iproc == nproc-1) ? (PLATESIZE % nproc) : 0);
+    remain = ( (iproc == nproc-1) ? (PLATESIZE % nproc) : 0 );
     num_rows = PLATESIZE/nproc + remain;
     start_row = iproc * num_rows;
 
@@ -109,10 +113,10 @@ int InitializeRows()
 	new   = malloc(sizeof(double) * num_rows * PLATESIZE);
 	fixed = malloc(sizeof(int)    * num_rows * PLATESIZE);
 
-	for (int row = 0; row < num_rows; row++) 
+	for (row = 0; row < num_rows; row++) 
 	{
-		int abs_row = start_row + row;
-		for (int col = 0; col < PLATESIZE; col++) 
+		abs_row = start_row + row;
+		for (col = 0; col < PLATESIZE; col++) 
 		{
 			// sides & top == cold & fixed
 			if (col == 0 || col + 1 == PLATESIZE || abs_row == 0)
@@ -156,23 +160,25 @@ int InitializeRows()
 /* Core of hotplate algorithm. */
 void Calculate()
 {
+	int row, col;
+
 	// TOP ROW
-	int row = 0;
+	row = 0;
 	if (iproc != 0)
-		for (int col = 0; col < PLATESIZE; col++)
+		for (col = 0; col < PLATESIZE; col++)
 			if (!FIXED(col, row))
 				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + row_up[col] + 4 * OLD(col, row))/8;
 
 	// NORMAL ROWS
 	for (row = 1; row < num_rows-1; row++)
-		for (int col = 0; col < PLATESIZE; col++)
+		for (col = 0; col < PLATESIZE; col++)
 			if (!FIXED(col, row))
 				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4 * OLD(col, row))/8;
 
 	// BOTTOM ROW
 	row = num_rows-1;
 	if (iproc != nproc-1)
-		for (int col = 0; col < PLATESIZE; col++)
+		for (col = 0; col < PLATESIZE; col++)
 			if (!FIXED(col, row))
 				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + row_down[col] + OLD(col, row-1) + 4 * OLD(col, row))/8;
 }
@@ -180,10 +186,12 @@ void Calculate()
 /* Examines the new data to see if any of it needs to be recalculated. If so, it stops immediately. */
 bool Check()
 {
+	int row, col;
+
 	// TOP ROW
-	int row = 0;
+	row = 0;
 	if (iproc != 0)
-		for (int col = 0; col < PLATESIZE; col++)
+		for (col = 0; col < PLATESIZE; col++)
 			if (FIXED(col, row))
 				continue;
 			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
@@ -191,7 +199,7 @@ bool Check()
 
 	// NORMAL ROWS
 	for (row = 1; row < num_rows-1; row++)
-		for (int col = 0; col < PLATESIZE; col++)
+		for (col = 0; col < PLATESIZE; col++)
 			if (FIXED(col, row))
 				continue;
 			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
@@ -200,7 +208,7 @@ bool Check()
 	// BOTTOM ROW
 	row = num_rows-1;
 	if (iproc != nproc-1)
-		for (int col = 0; col < PLATESIZE; col++)
+		for (col = 0; col < PLATESIZE; col++)
 			if (FIXED(col, row))
 				continue;
 			else if (fabs(OLD(col,row) - (OLD(col+1,row) + OLD(col-1,row) + OLD(col,row+1) + OLD(col,row-1))/4) > 0.1)
@@ -211,33 +219,33 @@ bool Check()
 
 void PrintToFile()
 {
-	File *f;
-	double temp;
-	int r, b;
+	// File *f;
+	// double temp;
+	// int r, b;
 
-	printf("Now printing to image file...\n");
-	f = fopen("plate.ppm", "w");
-	if (f != NULL)
-	{
-		fprintf(f, "P3\n");
-		fprintf(f, "#plate.ppm\n");
-		fprintf(f, "%d %d\n", PLATESIZE, PLATESIZE);
-		fprintf(f, "255\n\n");
+	// printf("Now printing to image file...\n");
+	// f = fopen("plate.ppm", "w");
+	// if (f != NULL)
+	// {
+	// 	fprintf(f, "P3\n");
+	// 	fprintf(f, "#plate.ppm\n");
+	// 	fprintf(f, "%d %d\n", PLATESIZE, PLATESIZE);
+	// 	fprintf(f, "255\n\n");
 
-		for (int row = 0; row < PLATESIZE; row++)
-		{
-			for (int col = 0; col < PLATESIZE; col++)
-			{
-				temp = NEW(col, row);
-				r = (int)(2.55 * temp);
-				b = (int)(255 - (255/100) * temp);
-				fprintf(f, "%d %d %d\n", r, 0, b);
-			}
-		}
-		fclose(f);
+	// 	for (int row = 0; row < PLATESIZE; row++)
+	// 	{
+	// 		for (int col = 0; col < PLATESIZE; col++)
+	// 		{
+	// 			temp = NEW(col, row);
+	// 			r = (int)(2.55 * temp);
+	// 			b = (int)(255 - (255/100) * temp);
+	// 			fprintf(f, "%d %d %d\n", r, 0, b);
+	// 		}
+	// 	}
+	// 	fclose(f);
 
-		printf("Done printing to file.\n");
-	}
-	else
-		printf("Error opening file.\n");
+	// 	printf("Done printing to file.\n");
+	// }
+	// else
+	// 	printf("Error opening file.\n");
 }
