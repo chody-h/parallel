@@ -23,7 +23,6 @@ bool Check(double*, double*, double*, int*);
 void PrintToFile();
 
 int nproc, iproc;
-bool converged, global_converged;
 int num_rows;
 
 int main(int argc, char *argv[])
@@ -37,8 +36,10 @@ int main(int argc, char *argv[])
     int* fixed;
     double* row_up;
     double* row_down;
+	bool converged = false;
+	bool global_converged = false;
 
-    MPI_Status status;
+    // MPI_Status status = MPI_STATUS_IGNORE;
     MPI_Request request_top, request_bottom;
 
     MPI_Init(&argc, &argv);
@@ -62,11 +63,10 @@ int main(int argc, char *argv[])
 
 	InitializeRows(start_row, old, new, fixed);
 
-	fprintf(stderr, "Calculating...\n");
+	fprintf(stderr, "(%d) Calculating\n", iproc);
 
-	while (!converged) 
+	while (!global_converged) 
 	{
-		// fprintf(stderr, "Exchanging...");
 
         /* First, I must get my neighbors' boundary values */
             // int MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag, MPI_Comm comm, MPI_Request *request)
@@ -74,36 +74,48 @@ int main(int argc, char *argv[])
         // Exchange with above
         if (iproc != 0)
         {
+			// fprintf(stderr, "(%d) Exchanging with above...\n", iproc);
             MPI_Send(&old[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD);
-            MPI_Irecv(&row_up, PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD, &request_top);
+            MPI_Irecv(&row_up[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD, &request_top);
         }
         // Exchange with below
         if (iproc != nproc-1)
         {
+			// fprintf(stderr, "(%d) Exchanging with below...\n", iproc);
             MPI_Send(&old[num_rows-1], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD);
-            MPI_Irecv(&row_down, PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD, &request_bottom);
+            MPI_Irecv(&row_down[0], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD, &request_bottom);
         }
 
-        if (iproc != 0) MPI_Wait(&request_top, &status);
-        if (iproc != nproc-1) MPI_Wait(&request_bottom, &status);
-        // fprintf(stderr, "Done exchanging.");
+        // fprintf(stderr, "(%d) Waiting for exchange...\n", iproc);
+        if (iproc != 0) MPI_Wait(&request_top, MPI_STATUS_IGNORE);
+        if (iproc != nproc-1) MPI_Wait(&request_bottom, MPI_STATUS_IGNORE);
+        // fprintf(stderr, "(%d) Done exchanging.\n", iproc);
 
         /* Then run calculations */
 		Calculate(row_up, row_down, old, new, fixed);
 
 		/* Finally, check if it has converged. If not, swap the pointers. */
 		converged = Check(row_up, row_down, old, fixed);
-		fprintf(stderr, "converged: %d\n", converged);
 		// int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
-		MPI_Allreduce(&converged, &converged, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+		MPI_Allreduce(&converged, &global_converged, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
 
-		// WAIT
+		/* Swap values */
+		double* temp = old;
+		old = new;
+		new = temp;
 	
 		iterations++;
+		if (iterations % 40 == 0) 
+			fprintf(stderr, ".");
+		if (iterations >= 400)
+		{
+			converged = true;
+			global_converged = true;
+		}
 	}
 
     if (iproc == 0) 
-    	fprintf(stderr, "It took %d iterations and %lf seconds to converge.\n", iterations, When() - starttime);
+    	fprintf(stderr, "\nIt took %d iterations and %lf seconds to converge.\n", iterations, When() - starttime);
 
     MPI_Finalize();
 	// TODO: reduce all rows to a single node for printing
@@ -178,7 +190,7 @@ void Calculate(double* row_up, double* row_down, double* old, double* new, int* 
 {
 	int row, col;
 
-	// fprintf(stderr, "top.\n");
+	// fprintf(stderr, "(%d) top.\n", iproc);
 	// TOP ROW
 	row = 0;
 	if (iproc != 0)
@@ -186,21 +198,21 @@ void Calculate(double* row_up, double* row_down, double* old, double* new, int* 
 			if (!FIXED(col, row)) 
 				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + row_up[col] + 4*OLD(col, row))/8;
 
-	// fprintf(stderr, "normal.\n");
+	// fprintf(stderr, "(%d) normal.\n", iproc);
 	// NORMAL ROWS
 	for (row = 1; row < num_rows-1; row++) 
 		for (col = 0; col < PLATESIZE; col++)
 			if (!FIXED(col, row)) 
 				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + OLD(col, row+1) + OLD(col, row-1) + 4*OLD(col, row))/8;
 
-	// fprintf(stderr, "bottom.\n");
+	// fprintf(stderr, "(%d) bottom.\n", iproc);
 	// BOTTOM ROW
 	row = num_rows-1;
 	if (iproc != nproc-1)
 		for (col = 0; col < PLATESIZE; col++)
 			if (!FIXED(col, row)) 
 				NEW(col, row) = (OLD(col+1, row) + OLD(col-1, row) + row_down[col] + OLD(col, row-1) + 4*OLD(col, row))/8;
-	// fprintf(stderr, "done.\n");
+	// fprintf(stderr, "(%d) done.\n", iproc);
 }
 
 /* Examines the new data to see if any of it needs to be recalculated. If so, it stops immediately. */
