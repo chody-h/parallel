@@ -18,4 +18,9 @@ export PBS_QUEUE=batch
 export OMP_NUM_THREADS=$SLURM_CPUS_ON_NODE
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
-./hotplate
+mpirun -np 1 ./hotplate3
+mpirun -np 2 ./hotplate3
+mpirun -np 4 ./hotplate3
+mpirun -np 8 ./hotplate3
+mpirun -np 16 ./hotplate3
+mpirun -np 32 ./hotplate3

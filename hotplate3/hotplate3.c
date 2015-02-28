@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
 
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
     MPI_Comm_rank(MPI_COMM_WORLD, &iproc);
-    fprintf(stderr, "%d: Hello from thread %d! (total %d)\n", iproc, iproc, nproc);
+    fprintf(stderr, "Hello from thread %d! (total %d)\n", iproc, nproc);
 
     /* decide how much I need to do and where */
     remain = ( (iproc == nproc-1) ? (PLATESIZE % nproc) : 0 );
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 
 	InitializeRows(start_row, old, new, fixed);
 
-	fprintf(stderr, "(%d) Calculating\n", iproc);
+	// fprintf(stderr, "(%d) Calculating\n", iproc);
 
 	while (!global_converged) 
 	{
@@ -105,8 +105,8 @@ int main(int argc, char *argv[])
 		new = temp;
 	
 		iterations++;
-		if (iterations % 40 == 0) 
-			fprintf(stderr, ".");
+		// if (iterations % 40 == 0) 
+		// 	fprintf(stderr, ".");
 		if (iterations >= 400)
 		{
 			converged = true;
@@ -137,7 +137,7 @@ double fabs(double d)
 
 void InitializeRows(int start_row, double* old, double* new, int* fixed) 
 {
-	fprintf(stderr, "Initializing Rows...\n");
+	// fprintf(stderr, "Initializing Rows...\n");
 	int row, abs_row, col;
 
 	for (row = 0; row < num_rows; row++) 
@@ -182,7 +182,7 @@ void InitializeRows(int start_row, double* old, double* new, int* fixed)
 			}
 		}
 	}
-	fprintf(stderr, "Done Initializing Rows.\n");
+	// fprintf(stderr, "Done Initializing Rows.\n");
 }
 
 /* Core of hotplate algorithm. */
