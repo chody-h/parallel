@@ -69,20 +69,21 @@ int main(int argc, char *argv[])
 	{
 
         /* First, I must get my neighbors' boundary values */
+			// int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request)
             // int MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag, MPI_Comm comm, MPI_Request *request)
             
         // Exchange with above
         if (iproc != 0)
         {
 			// fprintf(stderr, "(%d) Exchanging with above...\n", iproc);
-            MPI_Send(&old[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD);
+            MPI_Isend(&old[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD, &request_top);
             MPI_Irecv(&row_up[0], PLATESIZE, MPI_DOUBLE, iproc-1, 0, MPI_COMM_WORLD, &request_top);
         }
         // Exchange with below
         if (iproc != nproc-1)
         {
 			// fprintf(stderr, "(%d) Exchanging with below...\n", iproc);
-            MPI_Send(&old[num_rows-1], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD);
+            MPI_Isend(&old[num_rows-1], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD, &request_bottom);
             MPI_Irecv(&row_down[0], PLATESIZE, MPI_DOUBLE, iproc+1, 0, MPI_COMM_WORLD, &request_bottom);
         }
 
