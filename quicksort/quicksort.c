@@ -20,34 +20,49 @@ int main(int argc, char *argv[])
 	int ipiv, isend, nsend;
 
 	double starttime;
-	int nproc, iproc, v_iproc;
+	int nproc, iproc, v_iproc, color;
 
 	MPI_Request request;
 	MPI_Status status;
 	MPI_Comm mycomm;
 
 	MPI_Init(&argc, &argv);
-	starttime = When();
 
 	MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 	MPI_Comm_rank(MPI_COMM_WORLD, &iproc);
-	// fprintf(stderr, "\nHello from thread %d (of %d)!\n", iproc, nproc);
 
-	// initialize list with random numbers [1, 99]
 	dim = (int)(log((double)nproc)/log(2.0));
-	fprintf(stderr, "\nHello from thread %d (of %d)!\nDimension: %d\n", iproc, nproc, dim);
 	size = NUM_ELEMENTS;
 	max_capacity = size * nproc;
+
+	// initialize list with random numbers [1, 99]
 	list = malloc(max_capacity * sizeof(int));
-	srand(time(NULL)+iproc);
+	srand(time(NULL)+iproc*nproc);
 	for (i = 0; i < NUM_ELEMENTS; i++) 
 	{
 		list[i] = (rand() % 99) + 1;
-		fprintf(stderr, "(%d) %d\n", iproc, list[i]);
+		// fprintf(stderr, "(%d) %d\n", iproc, list[i]);
 	}
 
 	// quicksort it
 	qsort(list, size, sizeof(int), Compare);
+
+	// print lists
+	if (iproc == 0) 
+		fprintf(stderr, "\nStarting list:\n");
+	for (i = 0; i < nproc; i++) 
+	{
+		if (iproc == i)
+		{
+			for (j = 0; j < size; j++) 
+			{
+				fprintf(stderr, "(%d) %d\n", iproc, list[j]);
+			}
+		}
+		MPI_Barrier(MPI_COMM_WORLD);
+	}
+
+	starttime = When();
 
 	// while not done
 		// hypercube calculations
@@ -59,8 +74,8 @@ int main(int argc, char *argv[])
 	MPI_Comm_split(MPI_COMM_WORLD, 0, iproc, &mycomm);
 	root = 0;
 	v_iproc = iproc;
-	// for (i = dim-1; i != 0; i--) 
-	// {
+	for (i = dim-1; i >= 0; i--) 
+	{
 		// push or grab the pivot
 		if (iproc == 0)
 		{
@@ -70,7 +85,7 @@ int main(int argc, char *argv[])
 		MPI_Bcast(&pivot, 1, MPI_INTEGER, root, mycomm);
 
 		// calculate who my partner is
-		partner = v_iproc ^ (1 << (dim-1));
+		partner = v_iproc ^ (1 << i);
 
 		// determine what to send - ties go to lower iproc
 		if (v_iproc < partner)
@@ -101,13 +116,30 @@ int main(int argc, char *argv[])
 		// sort
 		qsort(list, size, sizeof(int), Compare);
 
-		fprintf(stderr, "(%d) pivot: %d\tindex: %d\n", iproc, pivot, isend);
-	// }
+		color = (v_iproc >= pow(2, i));
+		MPI_Comm_split(mycomm, color, iproc, &mycomm);
+		MPI_Comm_rank(mycomm, &v_iproc);
+
+		// fprintf(stderr, "(%d) pivot: %d\tindex: %d\n", iproc, pivot, isend);
+	}
+
+	if (iproc == 0) 
+		fprintf(stderr, "\nCompleted in (%f) seconds.\n", When()-starttime);
+	MPI_Barrier(MPI_COMM_WORLD);
 
 	// print lists
-	for (i = 0; i < size; i++) 
+	if (iproc == 0) 
+		fprintf(stderr, "\nSorted list:\n");
+	for (i = 0; i < nproc; i++) 
 	{
-		fprintf(stderr, "(%d) %d\n", iproc, list[i]);
+		if (iproc == i)
+		{
+			for (j = 0; j < size; j++) 
+			{
+				fprintf(stderr, "(%d) %d\n", iproc, list[j]);
+			}
+		}
+		MPI_Barrier(MPI_COMM_WORLD);
 	}
 
 	free(list);
