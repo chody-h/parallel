@@ -4,8 +4,6 @@
 #include <sys/time.h>
 #include <math.h>
 
-#define NUM_ELEMENTS	3
-
 typedef enum {false, true} bool;
 
 double When();
@@ -14,7 +12,7 @@ int ReverseCompare(const void*, const void*);
 
 int main(int argc, char *argv[])
 {
-	int* list;
+	int* list, num_elements;
 	int size, max_capacity, dim, i, j, nrecv;
 	int root, partner, pivot;
 	int ipiv, isend, nsend;
@@ -26,19 +24,20 @@ int main(int argc, char *argv[])
 	MPI_Status status;
 	MPI_Comm mycomm;
 
+	num_elements = atoi(argv[1]);
+
 	MPI_Init(&argc, &argv);
 
 	MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 	MPI_Comm_rank(MPI_COMM_WORLD, &iproc);
-
 	dim = (int)(log((double)nproc)/log(2.0));
-	size = NUM_ELEMENTS;
+	size = num_elements;
 	max_capacity = size * nproc;
 
 	// initialize list with random numbers [1, 99]
 	list = malloc(max_capacity * sizeof(int));
 	srand(time(NULL)+iproc*nproc);
-	for (i = 0; i < NUM_ELEMENTS; i++) 
+	for (i = 0; i < num_elements; i++) 
 	{
 		list[i] = (rand() % 99) + 1;
 		// fprintf(stderr, "(%d) %d\n", iproc, list[i]);
@@ -48,19 +47,21 @@ int main(int argc, char *argv[])
 	qsort(list, size, sizeof(int), Compare);
 
 	// print lists
-	if (iproc == 0) 
-		fprintf(stderr, "\nStarting list:\n");
-	for (i = 0; i < nproc; i++) 
-	{
-		if (iproc == i)
-		{
-			for (j = 0; j < size; j++) 
-			{
-				fprintf(stderr, "(%d) %d\n", iproc, list[j]);
-			}
-		}
-		MPI_Barrier(MPI_COMM_WORLD);
-	}
+	// if (iproc == 0) 
+	// 	fprintf(stderr, "\nStarting list:\n");
+	// for (i = 0; i < nproc; i++) 
+	// {
+	// 	if (iproc == i)
+	// 	{
+	// 		fprintf(stderr, "(%d):  ", iproc);
+	// 		for (j = 0; j < size; j++) 
+	// 		{
+	// 			fprintf(stderr, "%d ", list[j]);
+	// 		}
+	// 		fprintf(stderr, "\n");
+	// 	}
+	// 	MPI_Barrier(MPI_COMM_WORLD);
+	// }
 
 	starttime = When();
 
@@ -124,23 +125,25 @@ int main(int argc, char *argv[])
 	}
 
 	if (iproc == 0) 
-		fprintf(stderr, "\nCompleted in (%f) seconds.\n", When()-starttime);
+		fprintf(stderr, "Completed in (%f) seconds.\n", When()-starttime);
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	// print lists
-	if (iproc == 0) 
-		fprintf(stderr, "\nSorted list:\n");
-	for (i = 0; i < nproc; i++) 
-	{
-		if (iproc == i)
-		{
-			for (j = 0; j < size; j++) 
-			{
-				fprintf(stderr, "(%d) %d\n", iproc, list[j]);
-			}
-		}
-		MPI_Barrier(MPI_COMM_WORLD);
-	}
+	// if (iproc == 0) 
+	// 	fprintf(stderr, "\nSorted list:\n");
+	// for (i = 0; i < nproc; i++) 
+	// {
+	// 	if (iproc == i)
+	// 	{
+	// 		for (j = 0; j < size; j++) 
+	// 		{
+	// 			fprintf(stderr, "%d ", list[j]);
+	// 		}
+	// 	}
+	// 	MPI_Barrier(MPI_COMM_WORLD);
+	// }
+	// if (iproc == 0)
+	// 	fprintf(stderr, "\n");
 
 	free(list);
 	MPI_Finalize();
