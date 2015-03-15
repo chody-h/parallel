@@ -16,11 +16,13 @@ int main(int argc, char *argv[])
 {
 	int* list;
 	int size, i, dim;
+	int root, partner, pivot, piv_idx;
 
 	double starttime;
-	int nproc, iproc;
+	int nproc, iproc, v_iproc;
 
 	MPI_Request request;
+	MPI_Comm mycomm;
 
 	MPI_Init(&argc, &argv);
 	starttime = When();
@@ -47,17 +49,28 @@ int main(int argc, char *argv[])
 		}
 		// fprintf(stderr, "(%d) %d\n", iproc, list[i]);
 	}
+	size = NUM_ELEMENTS;
 
 	// quicksort it
 	qsort(list, NUM_ELEMENTS, sizeof(int), CompareInt);
 
 	// while not done
 		// hypercube calculations
+			// root broadcasts pivot
+			// figure out who to communicate with
 		// send half of list
 		// receive half of list
 		// merge lists
-	for (i = 0; i < dim; i++) {
-		
+	MPI_Comm_split(MPI_COMM_WORLD, 0, iproc, &mycomm);
+	root = 0;
+	for (i = 0; i < dim; i++) 
+	{
+		if (iproc == 0)
+		{
+			piv_idx = (size-1)/2;
+			pivot = list[piv_idx];
+		}
+		MPI_Bcast(&pivot, 1, MPI_INTEGER, root, mycomm);
 	}
 
 	// print lists
