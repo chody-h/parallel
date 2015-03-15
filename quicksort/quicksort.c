@@ -15,8 +15,9 @@ int MergeLists(int*, int, int*, int);
 int main(int argc, char *argv[])
 {
 	int* list;
-	int size, i, dim;
-	int root, partner, pivot, piv_idx;
+	int size, dim, i, j;
+	int root, partner, pivot;
+	int ipiv, isend, nsend;
 
 	double starttime;
 	int nproc, iproc, v_iproc;
@@ -43,10 +44,6 @@ int main(int argc, char *argv[])
 		{
 			list[i] = (rand() % 99) + 1;
 		}
-		else
-		{
-			list[i] = 0;
-		}
 		// fprintf(stderr, "(%d) %d\n", iproc, list[i]);
 	}
 	size = NUM_ELEMENTS;
@@ -63,15 +60,39 @@ int main(int argc, char *argv[])
 		// merge lists
 	MPI_Comm_split(MPI_COMM_WORLD, 0, iproc, &mycomm);
 	root = 0;
-	for (i = 0; i < dim; i++) 
-	{
+	v_iproc = iproc;
+	// for (i = dim-1; i != 0; i--) 
+	// {
+		// push or grab the pivot
 		if (iproc == 0)
 		{
-			piv_idx = (size-1)/2;
-			pivot = list[piv_idx];
+			ipiv = (size-1)/2;
+			pivot = list[ipiv];
 		}
 		MPI_Bcast(&pivot, 1, MPI_INTEGER, root, mycomm);
-	}
+
+		// calculate who my partner is
+		partner = v_iproc ^ (1 << (dim-1));
+
+		// determine what to send - ties go to lower iproc
+		if (v_iproc < partner)
+		{
+			// this is the index of the first one to send
+			isend = 0;
+			while (isend < size && list[isend] <= pivot) isend++;
+			MPI_Isend(list[isend], size-isend, MPI_INTEGER, partner, 0, mycomm, &request);
+			size -= (size-isend);
+			MPI_
+		}
+		else
+		{
+			// this is the index of the 
+			isend = size-1;
+			while (isend > 0 && list[isend] > pivot) isend--;
+			isend++;
+		}
+		fprintf(stderr, "(%d) pivot: %d\tindex: %d\n", iproc, pivot, isend);
+	// }
 
 	// print lists
 	for (i = 0; i < size; i++) 
