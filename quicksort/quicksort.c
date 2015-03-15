@@ -9,12 +9,13 @@
 typedef enum {false, true} bool;
 
 double When();
-int CompareInt(const void*, const void*);
+int Compare(const void*, const void*);
+int ReverseCompare(const void*, const void*);
 
 int main(int argc, char *argv[])
 {
 	int* list;
-	int size, dim, i, j, nrecv;
+	int size, max_capacity, dim, i, j, nrecv;
 	int root, partner, pivot;
 	int ipiv, isend, nsend;
 
@@ -35,21 +36,18 @@ int main(int argc, char *argv[])
 	// initialize list with random numbers [1, 99]
 	dim = (int)(log((double)nproc)/log(2.0));
 	fprintf(stderr, "\nHello from thread %d (of %d)!\nDimension: %d\n", iproc, nproc, dim);
-	size = nproc * NUM_ELEMENTS;
-	list = malloc(size * sizeof(int));
-	srand(time(NULL)+iproc);
-	for (i = 0; i < size; i++) 
-	{
-		if (i < NUM_ELEMENTS)
-		{
-			list[i] = (rand() % 99) + 1;
-		}
-		// fprintf(stderr, "(%d) %d\n", iproc, list[i]);
-	}
 	size = NUM_ELEMENTS;
+	max_capacity = size * nproc;
+	list = malloc(max_capacity * sizeof(int));
+	srand(time(NULL)+iproc);
+	for (i = 0; i < NUM_ELEMENTS; i++) 
+	{
+		list[i] = (rand() % 99) + 1;
+		fprintf(stderr, "(%d) %d\n", iproc, list[i]);
+	}
 
 	// quicksort it
-	qsort(list, size, sizeof(int), CompareInt);
+	qsort(list, size, sizeof(int), Compare);
 
 	// while not done
 		// hypercube calculations
@@ -80,9 +78,9 @@ int main(int argc, char *argv[])
 			// this is the index of the first one to send
 			isend = 0;
 			while (isend < size && list[isend] <= pivot) isend++;
-			MPI_Isend(list[isend], size-isend, MPI_INTEGER, partner, 0, mycomm, &request);
+			MPI_Isend(&(list[isend]), size-isend, MPI_INTEGER, partner, 0, mycomm, &request);
 			size -= (size-isend);
-			MPI_Recv(list[size], NUM_ELEMENTS-size, MPI_INTEGER, partner, 0, mycomm, &status);
+			MPI_Recv(&(list[size]), max_capacity-size, MPI_INTEGER, partner, 0, mycomm, &status);
 			MPI_Get_count(&status, MPI_INTEGER, &nrecv);
 			size += nrecv;
 		}
@@ -92,15 +90,16 @@ int main(int argc, char *argv[])
 			isend = size-1;
 			while (isend >= 0 && list[isend] > pivot) isend--;
 			isend++;
-			MPI_Isend(list[0], isend, MPI_INTEGER, partner, 0, mycomm, &request);
+			MPI_Isend(list, isend, MPI_INTEGER, partner, 0, mycomm, &request);
+			qsort(list, size, sizeof(int), ReverseCompare);
 			size -= isend;
-			MPI_Recv(list[size], NUM_ELEMENTS-size, MPI_INTEGER, partner, 0, mycomm, &status);
+			MPI_Recv(&(list[size]), max_capacity-size, MPI_INTEGER, partner, 0, mycomm, &status);
 			MPI_Get_count(&status, MPI_INTEGER, &nrecv);
 			size += nrecv;
 		}
 
 		// sort
-		qsort(list, size, sizeof(int), CompareInt);
+		qsort(list, size, sizeof(int), Compare);
 
 		fprintf(stderr, "(%d) pivot: %d\tindex: %d\n", iproc, pivot, isend);
 	// }
@@ -124,7 +123,12 @@ double When()
 	return ((double) tp.tv_sec + (double) tp.tv_usec * 1e-6);
 }
 
-int CompareInt(const void* a, const void* b)
+int Compare(const void* a, const void* b)
 {
    return ( *(int*)a - *(int*)b );
+}
+
+int ReverseCompare(const void* a, const void* b)
+{
+	return ( *(int*)b - *(int*)a );
 }
