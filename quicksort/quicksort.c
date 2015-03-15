@@ -10,12 +10,11 @@ typedef enum {false, true} bool;
 
 double When();
 int CompareInt(const void*, const void*);
-int MergeLists(int*, int, int*, int);
 
 int main(int argc, char *argv[])
 {
 	int* list;
-	int size, dim, i, j;
+	int size, dim, i, j, nrecv;
 	int root, partner, pivot;
 	int ipiv, isend, nsend;
 
@@ -23,6 +22,7 @@ int main(int argc, char *argv[])
 	int nproc, iproc, v_iproc;
 
 	MPI_Request request;
+	MPI_Status status;
 	MPI_Comm mycomm;
 
 	MPI_Init(&argc, &argv);
@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
 	size = NUM_ELEMENTS;
 
 	// quicksort it
-	qsort(list, NUM_ELEMENTS, sizeof(int), CompareInt);
+	qsort(list, size, sizeof(int), CompareInt);
 
 	// while not done
 		// hypercube calculations
@@ -82,15 +82,26 @@ int main(int argc, char *argv[])
 			while (isend < size && list[isend] <= pivot) isend++;
 			MPI_Isend(list[isend], size-isend, MPI_INTEGER, partner, 0, mycomm, &request);
 			size -= (size-isend);
-			MPI_
+			MPI_Recv(list[size], NUM_ELEMENTS-size, MPI_INTEGER, partner, 0, mycomm, &status);
+			MPI_Get_count(&status, MPI_INTEGER, &nrecv);
+			size += nrecv;
 		}
 		else
 		{
-			// this is the index of the 
+			// this is the count of how many to send
 			isend = size-1;
-			while (isend > 0 && list[isend] > pivot) isend--;
+			while (isend >= 0 && list[isend] > pivot) isend--;
 			isend++;
+			MPI_Isend(list[0], isend, MPI_INTEGER, partner, 0, mycomm, &request);
+			size -= isend;
+			MPI_Recv(list[size], NUM_ELEMENTS-size, MPI_INTEGER, partner, 0, mycomm, &status);
+			MPI_Get_count(&status, MPI_INTEGER, &nrecv);
+			size += nrecv;
 		}
+
+		// sort
+		qsort(list, size, sizeof(int), CompareInt);
+
 		fprintf(stderr, "(%d) pivot: %d\tindex: %d\n", iproc, pivot, isend);
 	// }
 
@@ -116,10 +127,4 @@ double When()
 int CompareInt(const void* a, const void* b)
 {
    return ( *(int*)a - *(int*)b );
-}
-
-// returns the size of the new list. new list is stored in A
-int MergeLists(int* a, int length_a, int* b, int length_b)
-{
-	return 0;
 }
