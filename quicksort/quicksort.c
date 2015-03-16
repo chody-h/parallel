@@ -47,21 +47,21 @@ int main(int argc, char *argv[])
 	qsort(list, size, sizeof(int), Compare);
 
 	// print lists
-	// if (iproc == 0) 
-	// 	fprintf(stderr, "\nStarting list:\n");
-	// for (i = 0; i < nproc; i++) 
-	// {
-	// 	if (iproc == i)
-	// 	{
-	// 		fprintf(stderr, "(%d):  ", iproc);
-	// 		for (j = 0; j < size; j++) 
-	// 		{
-	// 			fprintf(stderr, "%d ", list[j]);
-	// 		}
-	// 		fprintf(stderr, "\n");
-	// 	}
-	// 	MPI_Barrier(MPI_COMM_WORLD);
-	// }
+	if (iproc == 0) 
+		fprintf(stderr, "\nStarting list:\n");
+	for (i = 0; i < nproc; i++) 
+	{
+		if (iproc == i)
+		{
+			fprintf(stderr, "(%d):  ", iproc);
+			for (j = 0; j < size; j++) 
+			{
+				fprintf(stderr, "%d ", list[j]);
+			}
+			fprintf(stderr, "\n");
+		}
+		MPI_Barrier(MPI_COMM_WORLD);
+	}
 
 	starttime = When();
 
@@ -129,21 +129,21 @@ int main(int argc, char *argv[])
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	// print lists
-	// if (iproc == 0) 
-	// 	fprintf(stderr, "\nSorted list:\n");
-	// for (i = 0; i < nproc; i++) 
-	// {
-	// 	if (iproc == i)
-	// 	{
-	// 		for (j = 0; j < size; j++) 
-	// 		{
-	// 			fprintf(stderr, "%d ", list[j]);
-	// 		}
-	// 	}
-	// 	MPI_Barrier(MPI_COMM_WORLD);
-	// }
-	// if (iproc == 0)
-	// 	fprintf(stderr, "\n");
+	if (iproc == 0) 
+		fprintf(stderr, "\nSorted list:\n");
+	for (i = 0; i < nproc; i++) 
+	{
+		if (iproc == i)
+		{
+			for (j = 0; j < size; j++) 
+			{
+				fprintf(stderr, "%d ", list[j]);
+			}
+		}
+		MPI_Barrier(MPI_COMM_WORLD);
+	}
+	if (iproc == 0)
+		fprintf(stderr, "\n");
 
 	free(list);
 	MPI_Finalize();
