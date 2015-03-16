@@ -19,13 +19,14 @@
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
 #mpicc quicksort.c -o quicksort -lm
 for p in `seq 1 4`; do
-	for n in `seq 1 5`; do
+	for n in `seq 1 15`; do
 		COUNT=$((2**$n))
 		PROC=$((2**$p))
 		for iter in `seq 1 5`; do
 			echo numprocs: $PROC, numelements: $COUNT
 			mpirun -np $PROC ./quicksort $COUNT
 		done
+		echo 
 	done
 	echo 
 done
