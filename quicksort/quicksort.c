@@ -17,11 +17,11 @@ int main(int argc, char *argv[])
 	int *list, *recv_buf, *temp;
 	double size;
 	int dim, i, j, nrecv;
-	int root, partner, pivot, count;
+	int root, partner, pivot, pivot_buf, count;
 	int ipiv, isend, nsend;
 
 	double starttime;
-	int nproc, iproc, v_iproc, color;
+	int nproc, iproc, v_nproc, v_iproc, color;
 
 	MPI_Request request;
 	MPI_Status status;
@@ -83,6 +83,9 @@ int main(int argc, char *argv[])
 			ipiv = (size-1)/2;
 			pivot = list[ipiv];
 		}
+		MPI_Reduce(&pivot, &pivot_buf, 1, MPI_INTEGER, MPI_SUM, 0, mycomm);
+		MPI_Comm_size(mycomm, &v_nproc);
+		pivot = pivot_buf/(v_nproc);
 		MPI_Bcast(&pivot, 1, MPI_INTEGER, root, mycomm);
 
 		// calculate who my partner is
