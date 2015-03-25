@@ -1,12 +1,13 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 
-#define WIDTH			500
-#define HEIGHT			500
+#define WIDTH			1920
+#define HEIGHT			1080
 #define ITERATIONS		1000
 #define MAXCOLOR		255
 
-#define VALUES(x, y)	values[(x) + HEIGHT*(y)]
+#define VALUES(x, y)	values[(x) + WIDTH*(y)]
 
 int mandelbrot(double, double);
 void print();
@@ -19,21 +20,23 @@ int main()
 	values = (int*)malloc(WIDTH * HEIGHT * sizeof(int));
 	colors = (int*)malloc(ITERATIONS * sizeof(int));
 
-	for (int i = 0; i < ITERATIONS; i++) 
+	int i;
+	colors[0] = 255;
+	for (i = 1; i < ITERATIONS; i++) 
 	{
-		colors[i] = 255*log(i)/log(ITERATIONS)
-		fprintf(stderr, "%d ", colors[i]);
+		colors[i] = 255 - 255*log(i)/log(ITERATIONS);
+		// fprintf(stderr, "%d ", colors[i]);
 	}
 
 	fprintf(stderr, "Beginning mandelbrot calculations.\n");
 
-	for (int y = 0; y < HEIGHT; y++)
-	{
-		for (double x = 0; x < WIDTH; x++) 
-		{
+	int x, y;
+	for (y = 0; y < HEIGHT; y++)
+		for (x = 0; x < WIDTH; x++) 
 			VALUES(x, y) = mandelbrot(x, y);
-		}
-	}
+
+	fprintf(stderr, "iteration count: %d vs %d\n", VALUES(1079, 500), VALUES(1080, 500));
+	fprintf(stderr, "comparison     : %d vs %d\n", mandelbrot(1079, 500), mandelbrot(1079, 500));
 
 	print();
 }
@@ -48,7 +51,7 @@ int mandelbrot(double Px, double Py)
 	while (x*x + y*y < 4 && iteration < ITERATIONS)
 	{
 		double xtemp = x*x - y*y + x0;
-		y = 2*x*y + y0
+		y = 2*x*y + y0;
 		x = xtemp;
 		iteration++;
 	}
@@ -66,17 +69,15 @@ void print()
 		fprintf(f, "%d %d\n", WIDTH, HEIGHT);
 		fprintf(f, "255\n\n");
 
-		for (int i = 0; i < WIDTH*HEIGHT; i++)
-		{
-			fprintf(f, "%d %d %d\n", values[i], values[i], values[i]);
-		}
+		int x, y;
+		for (y = HEIGHT-1; y >= 0; y--)
+			for (x = 0; x < WIDTH; x++) 
+				fprintf(f, "%d %d %d\n", VALUES(x, y), VALUES(x, y), VALUES(x, y));
 
 		fclose(f);
 
 		printf("Done printing.\n");
 	}
 	else
-	{
 		printf("Error opening file.\n");
-	}
 }
