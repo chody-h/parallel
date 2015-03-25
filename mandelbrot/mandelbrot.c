@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <math.h>
 
-#define WIDTH			1920
-#define HEIGHT			1080
+// #define WIDTH			1920
+// #define HEIGHT			1080
 #define ITERATIONS		1000
 #define MAXCOLOR		255
 
@@ -14,9 +14,35 @@ void print();
 
 int* values;
 int* colors;
+int WIDTH = 1920;
+int HEIGHT = 1080;
+double START_X = -2.5;
+double END_X = 1;
+double LENGTH_X = 3.5;
+double START_Y = -1;
+double END_Y = 1;
+double LENGTH_Y = 2;
 
-int main() 
+int main(int argc, char *argv[]) 
 {
+	if (argc >= 3) 
+	{
+		WIDTH = atof(argv[1]);
+		HEIGHT = atof(argv[2]);
+	}
+	if (argc >= 6)
+	{
+		double CENTER_X = atof(argv[3]);
+		double CENTER_Y = atof(argv[4]);
+		LENGTH_X = atof(argv[5]);
+		LENGTH_Y = atof(argv[6]);
+
+		START_X = CENTER_X - (LENGTH_X/2);
+		END_X = CENTER_X + (LENGTH_X/2);
+		START_Y = CENTER_Y - (LENGTH_Y/2);
+		END_Y = CENTER_Y + (LENGTH_Y/2);
+	}
+
 	values = (int*)malloc(WIDTH * HEIGHT * sizeof(int));
 	colors = (int*)malloc(ITERATIONS * sizeof(int));
 
@@ -33,18 +59,15 @@ int main()
 	int x, y;
 	for (y = 0; y < HEIGHT; y++)
 		for (x = 0; x < WIDTH; x++) 
-			VALUES(x, y) = mandelbrot(x, y);
-
-	fprintf(stderr, "iteration count: %d vs %d\n", VALUES(1079, 500), VALUES(1080, 500));
-	fprintf(stderr, "comparison     : %d vs %d\n", mandelbrot(1079, 500), mandelbrot(1079, 500));
+			VALUES(x, y) = colors[mandelbrot(x, y)];
 
 	print();
 }
 
 int mandelbrot(double Px, double Py) 
 {
-	double x0 = -2.5 + (Px/WIDTH) * 3.5;
-	double y0 = -1 + (Py/HEIGHT) * 2;
+	double x0 = START_X + (Px/WIDTH) * LENGTH_X;
+	double y0 = START_Y + (Py/HEIGHT) * LENGTH_Y;
 	double x = 0.0;
 	double y = 0.0;
 	int iteration = 0;
