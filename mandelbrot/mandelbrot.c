@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-// #define WIDTH			1920
-// #define HEIGHT			1080
 #define ITERATIONS		1000
 #define MAXCOLOR		255
 
@@ -61,7 +59,7 @@ int main(int argc, char *argv[])
 		for (x = 0; x < WIDTH; x++) 
 			VALUES(x, y) = colors[mandelbrot(x, y)];
 
-	print();
+	// print();
 }
 
 int mandelbrot(double Px, double Py) 
